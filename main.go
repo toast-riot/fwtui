@@ -62,8 +62,9 @@ type model struct {
 }
 
 func main() {
-	m := model{menu: buildMenu(), view: home, status: runCommand("sudo ufw status verbose")()}
+	m := model{menu: buildMenu(), view: home}
 	reloadRules(&m)
+	reloadStatus(&m)
 
 	p := tea.NewProgram(m)
 	if err := p.Start(); err != nil {
@@ -135,7 +136,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmd = fmt.Sprintf("sudo ufw deny %d", port)
 					}
 					runCommand(cmd)()
-					m.status = runCommand("sudo ufw status verbose")()
+					reloadStatus(&m)
 					m.view = home
 					m.inputPort = ""
 					reloadRules(&m)
@@ -165,11 +166,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 			case "enter":
+				// TODO select multiple by space and then delete
 				runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
 				reloadRules(&m)
 			case "esc":
 				m.view = home
 				m.cursor = 0
+				reloadStatus(&m)
 			}
 		}
 	}
@@ -281,10 +284,10 @@ func getStatus() (enabled bool, loggingOn bool) {
 
 func resetMenu(m *model) {
 	m.menu = buildMenu()
-	resetStatus(m)
+	reloadStatus(m)
 }
 
-func resetStatus(m *model) {
+func reloadStatus(m *model) {
 	m.status = runCommand("sudo ufw status verbose")()
 }
 
