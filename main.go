@@ -16,6 +16,7 @@ type menuItem struct {
 	action func() string
 }
 
+// VIEW state
 type viewState string
 
 func (v viewState) isPortEdit() bool {
@@ -34,6 +35,16 @@ const home = "home"
 const allowPort = "port_edit_allow"
 const denyPort = "port_edit_deny"
 const deleteRule = "delete_rule"
+
+// ACTIONS
+const menuResetUFW = "RESET_UFW"
+const menuDisableUFW = "DISABLE"
+const menuEnableUFW = "ENABLE"
+const menuAllowPort = "ALLOW_PORT"
+const menuDenyPort = "DENY_PORT"
+const menuDeleteRule = "DELETE_RULE"
+const menuDisableLogging = "DISABLE_LOGGING"
+const menuEnableLogging = "ENABLE_LOGGING"
 
 type rule struct {
 	number int
@@ -86,27 +97,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				selected := m.menu[m.cursor].action()
 				switch selected {
-				case "RESET_UFW":
+				case menuResetUFW:
 					runCommand("sudo ufw reset")()
 					resetMenu(&m)
-				case "DISABLE":
+				case menuDisableUFW:
 					runCommand("sudo ufw disable")()
 					resetMenu(&m)
 					m.cursor = 0
-				case "ENABLE":
+				case menuEnableUFW:
 					runCommand("sudo ufw enable")()
 					resetMenu(&m)
-				case "ENABLE_LOGGING":
+				case menuEnableLogging:
 					runCommand("sudo ufw logging on")()
 					resetMenu(&m)
-				case "DISABLE_LOGGING":
+				case menuDisableLogging:
 					runCommand("sudo ufw logging off")()
 					resetMenu(&m)
-				case "ALLOW_PORT":
+				case menuAllowPort:
 					m.view = allowPort
-				case "DENY_PORT":
+				case menuDenyPort:
 					m.view = denyPort
-				case "DELETE_RULE":
+				case menuDeleteRule:
 					m.view = deleteRule
 					m.cursor = 0
 				}
@@ -142,7 +153,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = home
 				m.inputPort = ""
 			}
-			return m, nil
 
 		case m.view.isDeleteRule():
 			switch key {
@@ -231,24 +241,24 @@ func buildMenu() []menuItem {
 	items := []menuItem{}
 
 	if enabled {
-		items = append(items, menuItem{"Disable", func() string { return "DISABLE" }})
+		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
 		items = append(items,
-			menuItem{"Allow port...", func() string { return "ALLOW_PORT" }},
-			menuItem{"Deny port...", func() string { return "DENY_PORT" }},
-			menuItem{"Delete rule", func() string { return "DELETE_RULE" }},
+			menuItem{"Allow port...", func() string { return menuAllowPort }},
+			menuItem{"Deny port...", func() string { return menuDenyPort }},
+			menuItem{"Delete rule", func() string { return menuDeleteRule }},
 		)
 		if loggingOn {
-			items = append(items, menuItem{"Disable logging", func() string { return "DISABLE_LOGGING" }})
+			items = append(items, menuItem{"Disable logging", func() string { return menuDisableLogging }})
 		} else {
-			items = append(items, menuItem{"Enable logging", func() string { return "ENABLE_LOGGING" }})
+			items = append(items, menuItem{"Enable logging", func() string { return menuEnableLogging }})
 		}
 	} else {
-		items = append(items, menuItem{"Enable", func() string { return "ENABLE" }})
+		items = append(items, menuItem{"Enable", func() string { return menuEnableUFW }})
 
 	}
 
 	items = append(items,
-		menuItem{"Reset UFW", func() string { return "RESET_UFW" }},
+		menuItem{"Reset UFW", func() string { return menuResetUFW }},
 		menuItem{"Quit", func() string { os.Exit(0); return "" }},
 	)
 
