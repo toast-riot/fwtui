@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/samber/lo"
 )
 
 type menuItem struct {
@@ -25,16 +26,25 @@ func (v viewState) isHome() bool {
 	return v == home
 }
 
+func (v viewState) isDeleteRule() bool {
+	return v == deleteRule
+}
+
 const home = "home"
 const allowPort = "port_edit_allow"
 const denyPort = "port_edit_deny"
-const deleteAllowPort = "port_edit_delete_allow"
-const deleteDenyPort = "port_edit_delete_deny"
+const deleteRule = "delete_rule"
+
+type rule struct {
+	number int
+	line   string
+}
 
 type model struct {
 	cursor int
 	menu   []menuItem
 	status string
+	rules  []rule
 
 	view      viewState
 	inputPort string
@@ -42,6 +52,8 @@ type model struct {
 
 func main() {
 	m := model{menu: buildMenu(), view: home, status: runCommand("sudo ufw status verbose")()}
+	reloadRules(&m)
+
 	p := tea.NewProgram(m)
 	if err := p.Start(); err != nil {
 		fmt.Println("Error running program:", err)
@@ -57,11 +69,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
 		switch true {
 		case m.view.isHome():
 			switch key {
-			case "q", "ctrl+c":
-				return m, tea.Quit
 			case "up", "k":
 				if m.cursor > 0 {
 					m.cursor--
@@ -93,10 +106,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.view = allowPort
 				case "DENY_PORT":
 					m.view = denyPort
-				case "DELETE_ALLOW_PORT":
-					m.view = deleteAllowPort
-				case "DELETE_DENY_PORT":
-					m.view = deleteDenyPort
+				case "DELETE_RULE":
+					m.view = deleteRule
+					m.cursor = 0
 				}
 			}
 		case m.view.isPortEdit():
@@ -106,10 +118,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err == nil && port > 0 && port < 65536 {
 					var cmd string
 					switch m.view {
-					case deleteAllowPort:
-						cmd = fmt.Sprintf("sudo ufw delete allow %d", port)
-					case deleteDenyPort:
-						cmd = fmt.Sprintf("sudo ufw delete deny %d", port)
 					case allowPort:
 						cmd = fmt.Sprintf("sudo ufw allow %d", port)
 					case denyPort:
@@ -119,6 +127,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = runCommand("sudo ufw status verbose")()
 					m.view = home
 					m.inputPort = ""
+					reloadRules(&m)
 				} else {
 					m.status = "Invalid port number"
 				}
@@ -134,6 +143,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputPort = ""
 			}
 			return m, nil
+
+		case m.view.isDeleteRule():
+			switch key {
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(m.rules)-1 {
+					m.cursor++
+				}
+			case "enter":
+				runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
+				reloadRules(&m)
+			case "esc":
+				m.view = home
+				m.cursor = 0
+			}
 		}
 	}
 	return m, nil
@@ -152,13 +179,18 @@ func (m model) View() string {
 			prefix = "allow"
 		case denyPort:
 			prefix = "deny"
-		case deleteAllowPort:
-			prefix = "delete allow"
-		case deleteDenyPort:
-			prefix = "delete deny"
 		}
 		return fmt.Sprintf("Enter port to %s: %s\n(Press Enter to confirm)", prefix, m.inputPort)
-
+	case m.view.isDeleteRule():
+		lines := []string{"Select rule to delete:"}
+		for i, rule := range m.rules {
+			prefix := " "
+			if i == m.cursor {
+				prefix = ">"
+			}
+			lines = append(lines, fmt.Sprintf("%s %s", prefix, rule.line))
+		}
+		return strings.Join(lines, "\n")
 	}
 
 	return "Unknown state"
@@ -203,8 +235,7 @@ func buildMenu() []menuItem {
 		items = append(items,
 			menuItem{"Allow port...", func() string { return "ALLOW_PORT" }},
 			menuItem{"Deny port...", func() string { return "DENY_PORT" }},
-			menuItem{"Delete allow...", func() string { return "DELETE_ALLOW_PORT" }},
-			menuItem{"Delete deny...", func() string { return "DELETE_DENY_PORT" }},
+			menuItem{"Delete rule", func() string { return "DELETE_RULE" }},
 		)
 		if loggingOn {
 			items = append(items, menuItem{"Disable logging", func() string { return "DISABLE_LOGGING" }})
@@ -249,12 +280,24 @@ func resetStatus(m *model) {
 
 func runCommand(cmdStr string) func() string {
 	return func() string {
-		parts := strings.Fields(cmdStr)
-		cmd := exec.Command(parts[0], parts[1:]...)
+		cmd := exec.Command("bash", "-c", cmdStr) // Use a shell to interpret the pipe
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Sprintf("Error: %s\n%s", err, out)
 		}
 		return string(out)
 	}
+}
+
+func reloadRules(m *model) {
+	output := runCommand("sudo ufw status numbered")()
+	lines := strings.Split(output, "\n")
+	lines = lines[4:(len(lines) - 2)]
+	rules := lo.Map(lines, func(line string, index int) rule {
+		return rule{
+			number: index,
+			line:   line,
+		}
+	})
+	m.rules = rules
 }
