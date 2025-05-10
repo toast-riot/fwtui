@@ -15,22 +15,33 @@ type menuItem struct {
 	action func() string
 }
 
-const allowPort = "allow"
-const denyPort = "deny"
-const deleteAllowPort = "delete_allow"
-const deleteDenyPort = "delete_deny"
+type viewState string
+
+func (v viewState) isPortEdit() bool {
+	return strings.HasPrefix(string(v), "port_edit_")
+}
+
+func (v viewState) isHome() bool {
+	return v == home
+}
+
+const home = "home"
+const allowPort = "port_edit_allow"
+const denyPort = "port_edit_deny"
+const deleteAllowPort = "port_edit_delete_allow"
+const deleteDenyPort = "port_edit_delete_deny"
 
 type model struct {
 	cursor int
 	menu   []menuItem
 	status string
 
-	editing   string
+	view      viewState
 	inputPort string
 }
 
 func main() {
-	m := model{menu: buildMenu(), status: runCommand("sudo ufw status verbose")()}
+	m := model{menu: buildMenu(), view: home, status: runCommand("sudo ufw status verbose")()}
 	p := tea.NewProgram(m)
 	if err := p.Start(); err != nil {
 		fmt.Println("Error running program:", err)
@@ -46,13 +57,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
-		if m.editing != "" {
+		switch true {
+		case m.view.isHome():
+			switch key {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(m.menu)-1 {
+					m.cursor++
+				}
+			case "enter":
+				selected := m.menu[m.cursor].action()
+				switch selected {
+				case "RESET_UFW":
+					runCommand("sudo ufw reset")()
+					resetMenu(&m)
+				case "DISABLE":
+					runCommand("sudo ufw disable")()
+					resetMenu(&m)
+					m.cursor = 0
+				case "ENABLE":
+					runCommand("sudo ufw enable")()
+					resetMenu(&m)
+				case "ENABLE_LOGGING":
+					runCommand("sudo ufw logging on")()
+					resetMenu(&m)
+				case "DISABLE_LOGGING":
+					runCommand("sudo ufw logging off")()
+					resetMenu(&m)
+				case "ALLOW_PORT":
+					m.view = allowPort
+				case "DENY_PORT":
+					m.view = denyPort
+				case "DELETE_ALLOW_PORT":
+					m.view = deleteAllowPort
+				case "DELETE_DENY_PORT":
+					m.view = deleteDenyPort
+				}
+			}
+		case m.view.isPortEdit():
 			switch key {
 			case "enter":
 				port, err := strconv.Atoi(m.inputPort)
 				if err == nil && port > 0 && port < 65536 {
 					var cmd string
-					switch m.editing {
+					switch m.view {
 					case deleteAllowPort:
 						cmd = fmt.Sprintf("sudo ufw delete allow %d", port)
 					case deleteDenyPort:
@@ -64,7 +117,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					runCommand(cmd)()
 					m.status = runCommand("sudo ufw status verbose")()
-					m.editing = ""
+					m.view = home
 					m.inputPort = ""
 				} else {
 					m.status = "Invalid port number"
@@ -77,64 +130,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 				m.inputPort += key
 			case "esc":
-				m.editing = ""
+				m.view = home
 				m.inputPort = ""
 			}
 			return m, nil
-		}
-
-		switch key {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.menu)-1 {
-				m.cursor++
-			}
-		case "enter":
-			selected := m.menu[m.cursor].action()
-			switch selected {
-			case "RESET_UFW":
-				runCommand("sudo ufw reset")()
-				resetMenu(&m)
-			case "DISABLE":
-				runCommand("sudo ufw disable")()
-				resetMenu(&m)
-				m.cursor = 0
-			case "ENABLE":
-				runCommand("sudo ufw enable")()
-				resetMenu(&m)
-			case "ENABLE_LOGGING":
-				runCommand("sudo ufw logging on")()
-				resetMenu(&m)
-			case "DISABLE_LOGGING":
-				runCommand("sudo ufw logging off")()
-				resetMenu(&m)
-			case "ALLOW_PORT":
-				m.editing = allowPort
-				resetStatus(&m)
-			case "DENY_PORT":
-				m.editing = denyPort
-				resetStatus(&m)
-			case "DELETE_ALLOW_PORT":
-				m.editing = deleteAllowPort
-				resetStatus(&m)
-			case "DELETE_DENY_PORT":
-				m.editing = deleteDenyPort
-				resetStatus(&m)
-			}
 		}
 	}
 	return m, nil
 }
 
 func (m model) View() string {
-	if m.editing != "" {
+	switch true {
+	case m.view.isHome():
+		left := renderMenu(m.menu, m.cursor)
+		right := strings.Split(m.status, "\n")
+		return renderTwoColumns(left, right)
+	case m.view.isPortEdit():
 		var prefix string
-		switch m.editing {
+		switch m.view {
 		case allowPort:
 			prefix = "allow"
 		case denyPort:
@@ -145,38 +158,39 @@ func (m model) View() string {
 			prefix = "delete deny"
 		}
 		return fmt.Sprintf("Enter port to %s: %s\n(Press Enter to confirm)", prefix, m.inputPort)
+
 	}
 
-	// Create two columns: left for menu, right for status
-	s := "\nUFW Firewall Menu:\n\n"
-	for i, item := range m.menu {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
+	return "Unknown state"
+}
+
+func renderMenu(menu []menuItem, cursor int) []string {
+	var lines []string
+	lines = append(lines, "", "UFW Firewall Menu:", "")
+	for i, item := range menu {
+		prefix := " "
+		if i == cursor {
+			prefix = ">"
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, item.title)
+		lines = append(lines, fmt.Sprintf("%s %s", prefix, item.title))
 	}
+	return lines
+}
 
-	// Split into two columns
-	linesLeft := strings.Split(s, "\n")
-	linesRight := strings.Split(m.status, "\n")
-	maxLines := len(linesLeft)
-	if len(linesRight) > maxLines {
-		maxLines = len(linesRight)
-	}
-
-	view := ""
+func renderTwoColumns(left []string, right []string) string {
+	var b strings.Builder
+	maxLines := max(len(left), len(right))
 	for i := 0; i < maxLines; i++ {
-		var left, right string
-		if i < len(linesLeft) {
-			left = linesLeft[i]
+		var l, r string
+		if i < len(left) {
+			l = left[i]
 		}
-		if i < len(linesRight) {
-			right = linesRight[i]
+		if i < len(right) {
+			r = right[i]
 		}
-		view += fmt.Sprintf("%-30s | %s\n", left, right)
+		fmt.Fprintf(&b, "%-30s | %s\n", l, r)
 	}
-	return view
+	return b.String()
 }
 
 func buildMenu() []menuItem {
