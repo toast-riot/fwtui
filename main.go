@@ -470,6 +470,8 @@ func (m model) View() string {
 			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
 		}
 		output = strings.Join(lines, "\n")
+		output += "\n Press Space to select"
+		output += "\n Press Enter to delete"
 	}
 
 	output += "\n" + m.lastAction
