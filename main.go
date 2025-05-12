@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"fwtui/utils/set"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +90,7 @@ type model struct {
 	installedProfiles []UFWProfile
 	profilesToInstall []UFWProfile
 	lastAction        string
+	selectedItems     set.Set[int]
 
 	view      viewState
 	inputPort string
@@ -99,7 +102,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := model{menu: buildMenu(), view: home}
+	m := model{menu: buildMenu(), selectedItems: set.NewSet[int](), view: home}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	m = m.reloadInstalledProfiles()
@@ -159,7 +162,8 @@ func (m model) setLastAction(msg string) (model, tea.Cmd) {
 	})
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m := mod
 	switch msg := msg.(type) {
 	case string:
 		switch msg {
@@ -259,13 +263,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 			case "enter":
-				// TODO select multiple by space and then delete
-				runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
-				m = m.reloadRules()
+				if m.selectedItems.IsEmpty() {
+					runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
+					m = m.reloadRules()
+
+					if m.cursor > len(m.rules)-1 {
+						m.cursor = len(m.rules) - 1
+					}
+				} else {
+					// we have to reverse otherwise the position of the next element for deletion changes
+					selectedSlice := m.selectedItems.ToSlice()
+					sort.Slice(selectedSlice, func(i, j int) bool {
+						return selectedSlice[i] > selectedSlice[j]
+					})
+
+					lo.ForEach(selectedSlice, func(i int, _ int) {
+						runCommand(fmt.Sprintf("yes | sudo ufw delete %d", i))()
+					})
+					m = m.reloadRules()
+					m.cursor = 0
+					m.selectedItems = set.NewSet[int]()
+				}
+
 			case "esc":
 				m.view = home
 				m.cursor = 0
 				m = m.reloadStatus()
+				m.selectedItems = set.NewSet[int]()
+			case " ":
+				m.selectedItems = m.selectedItems.Toggle(m.cursor + 1)
 			}
 
 		case m.view.isProfilesHome():
@@ -304,12 +330,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.view = profilesHome
 				m.cursor = 0
+				m.selectedItems = set.NewSet[int]()
+			case " ":
+				m.selectedItems = m.selectedItems.Toggle(m.cursor)
 			case "enter":
-				profile := m.installedProfiles[m.cursor]
-				output := runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+				var output string
+				if m.selectedItems.IsEmpty() {
+					profile := m.installedProfiles[m.cursor]
+					output = runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+				} else {
+					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
+						profile := m.installedProfiles[i]
+						output += runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+					})
+					m.cursor = 0
+					m.selectedItems = set.NewSet[int]()
+				}
 				m = m.reloadStatus()
 				m = m.reloadRules()
-
 				return m.setLastAction(output)
 			}
 
@@ -326,9 +364,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.view = profilesHome
 				m.cursor = 0
+				m.selectedItems = set.NewSet[int]()
+			case " ":
+				m.selectedItems = m.selectedItems.Toggle(m.cursor)
 			case "enter":
-				profile := m.profilesToInstall[m.cursor]
-				output := createProfile(profile)
+				var output string
+				if m.selectedItems.IsEmpty() {
+					profile := m.profilesToInstall[m.cursor]
+					output = createProfile(profile)
+				} else {
+					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
+						profile := m.profilesToInstall[i]
+						output += "\n" + createProfile(profile)
+					})
+					m.cursor = 0
+					m.selectedItems = set.NewSet[int]()
+				}
+
 				m = m.reloadInstalledProfiles()
 				m = m.reloadProfilesToInstall()
 				return m.setLastAction(output)
@@ -358,39 +410,62 @@ func (m model) View() string {
 	case m.view.isDeleteRule():
 		lines := []string{"Select rule to delete:"}
 		for i, rule := range m.rules {
-			prefix := " "
-			if i == m.cursor {
-				prefix = ">"
+			prefix := "  "
+			if i == m.cursor && m.selectedItems.Has(i+1) {
+				prefix = ">*"
+			} else if i == m.cursor {
+				prefix = "> "
+			} else if m.selectedItems.Has(i + 1) {
+				prefix = " *"
 			}
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, rule.line))
 		}
 		output = strings.Join(lines, "\n")
+		output += "\n Press Space to select"
+		output += "\n Press Enter to delete"
 	case m.view.isProfilesHome():
-		lines := []string{"Select action:"}
+		lines := []string{"Select profile action:"}
 		for i, item := range profileHomeActions {
 			prefix := " "
 			if i == m.cursor {
 				prefix = ">"
 			}
-			lines = append(lines, fmt.Sprintf("%s %s", prefix, humanize(item)))
+			var itemName string
+			switch item {
+			case menuInstalledProfiles:
+				itemName = "List installed"
+			case menuInstallProfile:
+				itemName = "Install"
+			}
+			lines = append(lines, fmt.Sprintf("%s %s", prefix, itemName))
 		}
 		output = strings.Join(lines, "\n")
 	case m.view.isInstalledProfilesList():
 		lines := []string{"Select profile:"}
 		for i, profile := range m.installedProfiles {
-			prefix := " "
-			if i == m.cursor {
-				prefix = ">"
+			prefix := "  "
+			if i == m.cursor && m.selectedItems.Has(i) {
+				prefix = ">*"
+			} else if i == m.cursor {
+				prefix = "> "
+			} else if m.selectedItems.Has(i) {
+				prefix = " *"
 			}
 			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
 		}
 		output = strings.Join(lines, "\n")
+		output += "\n Press Space to select"
+		output += "\n Press Enter to allow"
 	case m.view.isInstallProfile():
 		lines := []string{"Select profile to install:"}
 		for i, profile := range m.profilesToInstall {
-			prefix := " "
-			if i == m.cursor {
-				prefix = ">"
+			prefix := "  "
+			if i == m.cursor && m.selectedItems.Has(i) {
+				prefix = ">*"
+			} else if i == m.cursor {
+				prefix = "> "
+			} else if m.selectedItems.Has(i) {
+				prefix = " *"
 			}
 			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
 		}
@@ -484,12 +559,4 @@ func runCommand(cmdStr string) func() string {
 		}
 		return string(out)
 	}
-}
-
-func humanize(s string) string {
-	words := strings.Split(s, "_")
-	for i, word := range words {
-		words[i] = strings.Title(strings.ToLower(word))
-	}
-	return strings.Join(words, " ")
 }

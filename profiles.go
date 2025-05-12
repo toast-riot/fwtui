@@ -91,7 +91,7 @@ func createProfile(p UFWProfile) string {
 		return fmt.Sprintf("Error creating profile: %s", err)
 	}
 	runCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
-	return "Profile created"
+	return fmt.Sprintf("Profile %s created", p.Name)
 }
 
 func loadInstalledProfiles() ([]UFWProfile, error) {
