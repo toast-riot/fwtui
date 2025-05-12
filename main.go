@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/samber/lo"
@@ -27,16 +28,34 @@ func (v viewState) isHome() bool {
 	return v == home
 }
 
+func (v viewState) isProfilesHome() bool {
+	return v == profilesHome
+}
+
+func (v viewState) isInstalledProfilesList() bool {
+	return v == installedProfilesList
+}
+
+func (v viewState) isInstallProfile() bool {
+	return v == installProfile
+}
+
 func (v viewState) isDeleteRule() bool {
 	return v == deleteRule
 }
 
 const home = "home"
+
+const profilesHome = "profiles_home"
+
+const installedProfilesList = "installed_profiles_list"
+const installProfile = "install_profile"
+
 const allowPort = "port_edit_allow"
 const denyPort = "port_edit_deny"
 const deleteRule = "delete_rule"
 
-// ACTIONS
+// HOME MENU
 const menuResetUFW = "RESET_UFW"
 const menuDisableUFW = "DISABLE"
 const menuEnableUFW = "ENABLE"
@@ -46,25 +65,45 @@ const menuDeleteRule = "DELETE_RULE"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
 
+// PROFILE MENU
+var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile}
+
+const menuProfiles = "PROFILES"
+const menuInstalledProfiles = "INSTALLED_PROFILES"
+const menuInstallProfile = "INSTALL_PROFILE"
+
+// EVENT
+const lastActionTimeUp = "LAST_ACTION_TIME_UP"
+
 type rule struct {
 	number int
 	line   string
 }
 
 type model struct {
-	cursor int
-	menu   []menuItem
-	status string
-	rules  []rule
+	cursor            int
+	menu              []menuItem
+	status            string
+	rules             []rule
+	installedProfiles []UFWProfile
+	profilesToInstall []UFWProfile
+	lastAction        string
 
 	view      viewState
 	inputPort string
 }
 
 func main() {
+	if os.Geteuid() != 0 {
+		fmt.Println("This action requires root. Please run with sudo.")
+		os.Exit(1)
+	}
+
 	m := model{menu: buildMenu(), view: home}
-	reloadRules(&m)
-	reloadStatus(&m)
+	m = m.reloadRules()
+	m = m.reloadStatus()
+	m = m.reloadInstalledProfiles()
+	m = m.reloadProfilesToInstall()
 
 	p := tea.NewProgram(m)
 	if err := p.Start(); err != nil {
@@ -77,13 +116,64 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func (m model) resetMenu() model {
+	m.menu = buildMenu()
+	m = m.reloadStatus()
+	return m
+}
+
+func (m model) reloadStatus() model {
+	m.status = runCommand("sudo ufw status verbose")()
+	return m
+}
+
+func (m model) reloadInstalledProfiles() model {
+	profiles, _ := loadInstalledProfiles()
+	m.installedProfiles = profiles
+	return m
+}
+
+func (m model) reloadProfilesToInstall() model {
+	m.profilesToInstall = installableProfiles()
+	return m
+}
+
+func (m model) reloadRules() model {
+	output := runCommand("sudo ufw status numbered")()
+	lines := strings.Split(output, "\n")
+	lines = lines[4:(len(lines) - 2)]
+	rules := lo.Map(lines, func(line string, index int) rule {
+		return rule{
+			number: index,
+			line:   line,
+		}
+	})
+	m.rules = rules
+	return m
+}
+
+func (m model) setLastAction(msg string) (model, tea.Cmd) {
+	m.lastAction = msg
+	return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return lastActionTimeUp
+	})
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case string:
+		switch msg {
+		case lastActionTimeUp:
+			m.lastAction = ""
+		}
+
 	case tea.KeyMsg:
 		key := msg.String()
-		if key == "ctrl+c" {
+		switch key {
+		case "ctrl+c", "ctrl+d", "ctrl+q":
 			return m, tea.Quit
 		}
+
 		switch true {
 		case m.view.isHome():
 			switch key {
@@ -100,26 +190,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch selected {
 				case menuResetUFW:
 					runCommand("sudo ufw reset")()
-					resetMenu(&m)
+					m = m.resetMenu()
 				case menuDisableUFW:
 					runCommand("sudo ufw disable")()
-					resetMenu(&m)
+					m = m.resetMenu()
 					m.cursor = 0
 				case menuEnableUFW:
 					runCommand("sudo ufw enable")()
-					resetMenu(&m)
+					m = m.resetMenu()
 				case menuEnableLogging:
 					runCommand("sudo ufw logging on")()
-					resetMenu(&m)
+					m = m.resetMenu()
 				case menuDisableLogging:
 					runCommand("sudo ufw logging off")()
-					resetMenu(&m)
+					m = m.resetMenu()
 				case menuAllowPort:
 					m.view = allowPort
 				case menuDenyPort:
 					m.view = denyPort
 				case menuDeleteRule:
 					m.view = deleteRule
+					m.cursor = 0
+				case menuProfiles:
+					m.view = profilesHome
 					m.cursor = 0
 				}
 			}
@@ -136,10 +229,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmd = fmt.Sprintf("sudo ufw deny %d", port)
 					}
 					runCommand(cmd)()
-					reloadStatus(&m)
+					m = m.reloadStatus()
 					m.view = home
 					m.inputPort = ""
-					reloadRules(&m)
+					m = m.reloadRules()
 				} else {
 					m.status = "Invalid port number"
 				}
@@ -168,11 +261,77 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				// TODO select multiple by space and then delete
 				runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
-				reloadRules(&m)
+				m = m.reloadRules()
 			case "esc":
 				m.view = home
 				m.cursor = 0
-				reloadStatus(&m)
+				m = m.reloadStatus()
+			}
+
+		case m.view.isProfilesHome():
+			switch key {
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(profileHomeActions)-1 {
+					m.cursor++
+				}
+			case "esc":
+				m.view = home
+				m.cursor = 0
+			case "enter":
+				switch profileHomeActions[m.cursor] {
+				case menuInstalledProfiles:
+					m.view = installedProfilesList
+					m.cursor = 0
+				case menuInstallProfile:
+					m.view = installProfile
+					m.cursor = 0
+				}
+			}
+		case m.view.isInstalledProfilesList():
+			switch key {
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(m.installedProfiles)-1 {
+					m.cursor++
+				}
+			case "esc":
+				m.view = profilesHome
+				m.cursor = 0
+			case "enter":
+				profile := m.installedProfiles[m.cursor]
+				output := runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+				m = m.reloadStatus()
+				m = m.reloadRules()
+
+				return m.setLastAction(output)
+			}
+
+		case m.view.isInstallProfile():
+			switch key {
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(m.profilesToInstall)-1 {
+					m.cursor++
+				}
+			case "esc":
+				m.view = profilesHome
+				m.cursor = 0
+			case "enter":
+				profile := m.profilesToInstall[m.cursor]
+				output := createProfile(profile)
+				m = m.reloadInstalledProfiles()
+				m = m.reloadProfilesToInstall()
+				return m.setLastAction(output)
 			}
 		}
 	}
@@ -180,11 +339,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	var output string
+
 	switch true {
 	case m.view.isHome():
 		left := renderMenu(m.menu, m.cursor)
 		right := strings.Split(m.status, "\n")
-		return renderTwoColumns(left, right)
+		output = renderTwoColumns(left, right)
 	case m.view.isPortEdit():
 		var prefix string
 		switch m.view {
@@ -193,7 +354,7 @@ func (m model) View() string {
 		case denyPort:
 			prefix = "deny"
 		}
-		return fmt.Sprintf("Enter port to %s: %s\n(Press Enter to confirm)", prefix, m.inputPort)
+		output = fmt.Sprintf("Enter port to %s: %s\n(Press Enter to confirm)", prefix, m.inputPort)
 	case m.view.isDeleteRule():
 		lines := []string{"Select rule to delete:"}
 		for i, rule := range m.rules {
@@ -203,10 +364,41 @@ func (m model) View() string {
 			}
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, rule.line))
 		}
-		return strings.Join(lines, "\n")
+		output = strings.Join(lines, "\n")
+	case m.view.isProfilesHome():
+		lines := []string{"Select action:"}
+		for i, item := range profileHomeActions {
+			prefix := " "
+			if i == m.cursor {
+				prefix = ">"
+			}
+			lines = append(lines, fmt.Sprintf("%s %s", prefix, humanize(item)))
+		}
+		output = strings.Join(lines, "\n")
+	case m.view.isInstalledProfilesList():
+		lines := []string{"Select profile:"}
+		for i, profile := range m.installedProfiles {
+			prefix := " "
+			if i == m.cursor {
+				prefix = ">"
+			}
+			lines = append(lines, fmt.Sprintf("%s %-15s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
+		}
+		output = strings.Join(lines, "\n")
+	case m.view.isInstallProfile():
+		lines := []string{"Select profile to install:"}
+		for i, profile := range m.profilesToInstall {
+			prefix := " "
+			if i == m.cursor {
+				prefix = ">"
+			}
+			lines = append(lines, fmt.Sprintf("%s %-15s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
+		}
+		output = strings.Join(lines, "\n")
 	}
 
-	return "Unknown state"
+	output += "\n" + m.lastAction
+	return output
 }
 
 func renderMenu(menu []menuItem, cursor int) []string {
@@ -246,6 +438,7 @@ func buildMenu() []menuItem {
 	if enabled {
 		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
 		items = append(items,
+			menuItem{"Profiles", func() string { return menuProfiles }},
 			menuItem{"Allow port...", func() string { return menuAllowPort }},
 			menuItem{"Deny port...", func() string { return menuDenyPort }},
 			menuItem{"Delete rule", func() string { return menuDeleteRule }},
@@ -282,15 +475,6 @@ func getStatus() (enabled bool, loggingOn bool) {
 	return
 }
 
-func resetMenu(m *model) {
-	m.menu = buildMenu()
-	reloadStatus(m)
-}
-
-func reloadStatus(m *model) {
-	m.status = runCommand("sudo ufw status verbose")()
-}
-
 func runCommand(cmdStr string) func() string {
 	return func() string {
 		cmd := exec.Command("bash", "-c", cmdStr) // Use a shell to interpret the pipe
@@ -302,15 +486,10 @@ func runCommand(cmdStr string) func() string {
 	}
 }
 
-func reloadRules(m *model) {
-	output := runCommand("sudo ufw status numbered")()
-	lines := strings.Split(output, "\n")
-	lines = lines[4:(len(lines) - 2)]
-	rules := lo.Map(lines, func(line string, index int) rule {
-		return rule{
-			number: index,
-			line:   line,
-		}
-	})
-	m.rules = rules
+func humanize(s string) string {
+	words := strings.Split(s, "_")
+	for i, word := range words {
+		words[i] = strings.Title(strings.ToLower(word))
+	}
+	return strings.Join(words, " ")
 }
