@@ -382,7 +382,7 @@ func (m model) View() string {
 			if i == m.cursor {
 				prefix = ">"
 			}
-			lines = append(lines, fmt.Sprintf("%s %-15s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
+			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
 		}
 		output = strings.Join(lines, "\n")
 	case m.view.isInstallProfile():
@@ -392,7 +392,7 @@ func (m model) View() string {
 			if i == m.cursor {
 				prefix = ">"
 			}
-			lines = append(lines, fmt.Sprintf("%s %-15s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
+			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
 		}
 		output = strings.Join(lines, "\n")
 	}

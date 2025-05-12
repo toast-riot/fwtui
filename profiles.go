@@ -41,12 +41,12 @@ func installableProfiles() []UFWProfile {
 		{Name: "MongoDB", Title: "MongoDB database", Ports: []string{"27017/tcp"}, Installed: lo.Contains(installedProfileNames, "MongoDB")},
 		{Name: "Redis", Title: "Redis key-value store", Ports: []string{"6379/tcp"}, Installed: lo.Contains(installedProfileNames, "Redis")},
 		{Name: "InfluxDB", Title: "InfluxDB time series database", Ports: []string{"8086/tcp"}, Installed: lo.Contains(installedProfileNames, "InfluxDB")},
-		{Name: "Elasticsearch", Title: "Elasticsearch search engine", Ports: []string{"9200/tcp", "9300/tcp"}, Installed: lo.Contains(installedProfileNames, "Elasticsearch")},
+		{Name: "Elasticsearch", Title: "Elasticsearch search engine", Ports: []string{"9200,9300/tcp"}, Installed: lo.Contains(installedProfileNames, "Elasticsearch")},
 
 		// DevOps / containers
 		{Name: "Docker Remote API", Title: "Docker remote API", Ports: []string{"2375,2376/tcp"}, Installed: lo.Contains(installedProfileNames, "Docker Remote API")},
 		{Name: "Kubernetes API", Title: "Kubernetes API server", Ports: []string{"6443/tcp"}, Installed: lo.Contains(installedProfileNames, "Kubernetes API")},
-		{Name: "Docker Swarm", Title: "Docker Swarm cluster communication", Ports: []string{"2377/tcp", "7946/tcp", "7946/udp", "4789/udp"}, Installed: lo.Contains(installedProfileNames, "Docker Swarm")},
+		{Name: "Docker Swarm", Title: "Docker Swarm cluster communication", Ports: []string{"2377,7946/tcp", "7946,4789/udp"}, Installed: lo.Contains(installedProfileNames, "Docker Swarm")},
 
 		// VPN
 		{Name: "WireGuard", Title: "WireGuard VPN", Ports: []string{"51820/udp"}, Installed: lo.Contains(installedProfileNames, "WireGuard")},
@@ -64,7 +64,7 @@ func installableProfiles() []UFWProfile {
 
 		// File sharing
 		{Name: "Samba", Title: "Windows file/printer sharing (Samba)", Ports: []string{"137,138/udp", "139,445/tcp"}, Installed: lo.Contains(installedProfileNames, "Samba")},
-		{Name: "NFS", Title: "Network File System", Ports: []string{"111/tcp", "111/udp", "2049/tcp", "2049/udp"}, Installed: lo.Contains(installedProfileNames, "NFS")},
+		{Name: "NFS", Title: "Network File System", Ports: []string{"111,2049/tcp", "111,2049/udp"}, Installed: lo.Contains(installedProfileNames, "NFS")},
 
 		// Misc
 		{Name: "CUPS", Title: "Common Unix Printing System", Ports: []string{"631/tcp"}, Installed: lo.Contains(installedProfileNames, "CUPS")},
@@ -72,8 +72,8 @@ func installableProfiles() []UFWProfile {
 		{Name: "Deluge", Title: "Deluge BitTorrent client", Ports: []string{"6881/tcp", "6881/udp"}, Installed: lo.Contains(installedProfileNames, "Deluge")},
 		{Name: "Prometheus", Title: "Prometheus monitoring", Ports: []string{"9090/tcp"}, Installed: lo.Contains(installedProfileNames, "Prometheus")},
 		{Name: "Grafana", Title: "Grafana dashboards", Ports: []string{"3000/tcp"}, Installed: lo.Contains(installedProfileNames, "Grafana")},
-		{Name: "RabbitMQ", Title: "RabbitMQ message broker", Ports: []string{"5672/tcp", "15672/tcp"}, Installed: lo.Contains(installedProfileNames, "RabbitMQ")},
-		{Name: "Mosquitto", Title: "Mosquitto MQTT broker", Ports: []string{"1883/tcp", "8883/tcp"}, Installed: lo.Contains(installedProfileNames, "Mosquitto")},
+		{Name: "RabbitMQ", Title: "RabbitMQ message broker", Ports: []string{"5672,15672/tcp"}, Installed: lo.Contains(installedProfileNames, "RabbitMQ")},
+		{Name: "Mosquitto", Title: "Mosquitto MQTT broker", Ports: []string{"1883,8883/tcp"}, Installed: lo.Contains(installedProfileNames, "Mosquitto")},
 	}
 
 	profiles = lo.Filter(profiles, func(p UFWProfile, _ int) bool {
