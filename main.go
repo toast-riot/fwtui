@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,8 +21,8 @@ type menuItem struct {
 // VIEW state
 type viewState string
 
-func (v viewState) isPortEdit() bool {
-	return strings.HasPrefix(string(v), "port_edit_")
+func (v viewState) isCreateRule() bool {
+	return v == createRule
 }
 
 func (v viewState) isHome() bool {
@@ -53,16 +52,14 @@ const profilesHome = "profiles_home"
 const installedProfilesList = "installed_profiles_list"
 const installProfile = "install_profile"
 
-const allowPort = "port_edit_allow"
-const denyPort = "port_edit_deny"
+const createRule = "create_rule"
 const deleteRule = "delete_rule"
 
 // HOME MENU
 const menuResetUFW = "RESET_UFW"
 const menuDisableUFW = "DISABLE"
 const menuEnableUFW = "ENABLE"
-const menuAllowPort = "ALLOW_PORT"
-const menuDenyPort = "DENY_PORT"
+const menuCreateRule = "CREATE_RULE"
 const menuDeleteRule = "DELETE_RULE"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
@@ -92,8 +89,8 @@ type model struct {
 	lastAction        string
 	selectedItems     set.Set[int]
 
-	view      viewState
-	inputPort string
+	view     viewState
+	ruleForm RuleForm
 }
 
 func main() {
@@ -208,10 +205,9 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case menuDisableLogging:
 					runCommand("sudo ufw logging off")()
 					m = m.resetMenu()
-				case menuAllowPort:
-					m.view = allowPort
-				case menuDenyPort:
-					m.view = denyPort
+				case menuCreateRule:
+					m.ruleForm = NewRuleForm()
+					m.view = createRule
 				case menuDeleteRule:
 					m.view = deleteRule
 					m.cursor = 0
@@ -220,37 +216,18 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = 0
 				}
 			}
-		case m.view.isPortEdit():
-			switch key {
-			case "enter":
-				port, err := strconv.Atoi(m.inputPort)
-				if err == nil && port > 0 && port < 65536 {
-					var cmd string
-					switch m.view {
-					case allowPort:
-						cmd = fmt.Sprintf("sudo ufw allow %d", port)
-					case denyPort:
-						cmd = fmt.Sprintf("sudo ufw deny %d", port)
-					}
-					runCommand(cmd)()
-					m = m.reloadStatus()
-					m.view = home
-					m.inputPort = ""
-					m = m.reloadRules()
-				} else {
-					m.status = "Invalid port number"
-				}
-
-			case "backspace":
-				if len(m.inputPort) > 0 {
-					m.inputPort = m.inputPort[:len(m.inputPort)-1]
-				}
-			case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
-				m.inputPort += key
-			case "esc":
+		case m.view.isCreateRule():
+			newForm, cmd, outMsg := m.ruleForm.UpdateRuleForm(msg)
+			m.ruleForm = newForm
+			switch outMsg {
+			case CreateRuleCreated:
+				m = m.reloadStatus()
+				m = m.reloadRules()
 				m.view = home
-				m.inputPort = ""
+			case CreateRuleEsc:
+				m.view = home
 			}
+			return m, cmd
 
 		case m.view.isDeleteRule():
 			switch key {
@@ -398,15 +375,8 @@ func (m model) View() string {
 		left := renderMenu(m.menu, m.cursor)
 		right := strings.Split(m.status, "\n")
 		output = renderTwoColumns(left, right)
-	case m.view.isPortEdit():
-		var prefix string
-		switch m.view {
-		case allowPort:
-			prefix = "allow"
-		case denyPort:
-			prefix = "deny"
-		}
-		output = fmt.Sprintf("Enter port to %s: %s\n(Press Enter to confirm)", prefix, m.inputPort)
+	case m.view.isCreateRule():
+		output = m.ruleForm.ViewCreateRule()
 	case m.view.isDeleteRule():
 		lines := []string{"Select rule to delete:"}
 		for i, rule := range m.rules {
@@ -516,8 +486,7 @@ func buildMenu() []menuItem {
 		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
 		items = append(items,
 			menuItem{"Profiles", func() string { return menuProfiles }},
-			menuItem{"Allow port...", func() string { return menuAllowPort }},
-			menuItem{"Deny port...", func() string { return menuDenyPort }},
+			menuItem{"Create rule", func() string { return menuCreateRule }},
 			menuItem{"Delete rule", func() string { return menuDeleteRule }},
 		)
 		if loggingOn {
