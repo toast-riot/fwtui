@@ -39,3 +39,7 @@ func (s *SelectableList[T]) ForEach(f func(item T, index int, isSelected bool)) 
 		f(item, i, i == s.Current)
 	}
 }
+
+func (s *SelectableList[T]) FocusFirst() {
+	s.Current = 0
+}

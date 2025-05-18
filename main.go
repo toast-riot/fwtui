@@ -5,8 +5,8 @@ import (
 	"fwtui/modules/create_rule"
 	"fwtui/modules/profiles"
 	oscmd "fwtui/utils/cmd"
+	"fwtui/utils/multiselect_list"
 	"fwtui/utils/selectable_list"
-	"fwtui/utils/set"
 	"os"
 	"sort"
 	"strings"
@@ -63,15 +63,13 @@ type rule struct {
 }
 
 type model struct {
-	cursor   int
-	menuList *selectable_list.SelectableList[menuItem]
-	status   string
-	rules    []rule
+	menuList   *selectable_list.SelectableList[menuItem]
+	view       viewHomeState
+	status     string
+	lastAction string
 
-	lastAction    string
-	selectedItems set.Set[int]
+	rules multiselect_list.MultiSelectableList[rule]
 
-	view           viewHomeState
 	ruleForm       create_rule.RuleForm
 	profilesModule profiles.ProfilesModule
 }
@@ -82,7 +80,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := model{menuList: buildMenu(), selectedItems: set.NewSet[int](), view: viewStateHome}
+	m := model{menuList: buildMenu(), view: viewStateHome}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
@@ -117,7 +115,7 @@ func (m model) reloadRules() model {
 			line:   line,
 		}
 	})
-	m.rules = rules
+	m.rules.SetItems(rules)
 	return m
 }
 
@@ -164,7 +162,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case menuDisableUFW:
 					oscmd.RunCommand("sudo ufw disable")()
 					m = m.resetMenu()
-					m.cursor = 0
+					m.menuList.FocusFirst()
 				case menuEnableUFW:
 					oscmd.RunCommand("sudo ufw enable")()
 					m = m.resetMenu()
@@ -179,7 +177,6 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.view = viewStateCreateRule
 				case menuDeleteRule:
 					m.view = viewStateDeleteRule
-					m.cursor = 0
 				case menuProfiles:
 					m.view = viewStateProfiles
 					module, cmd := profiles.Init()
@@ -203,24 +200,16 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case m.view.isDeleteRule():
 			switch key {
 			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
+				m.rules.Prev()
 			case "down", "j":
-				if m.cursor < len(m.rules)-1 {
-					m.cursor++
-				}
+				m.rules.Next()
 			case "enter":
-				if m.selectedItems.IsEmpty() {
-					oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
+				if m.rules.NoneSelected() {
+					oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.rules.FocusedIndex()+1))()
 					m = m.reloadRules()
-
-					if m.cursor > len(m.rules)-1 {
-						m.cursor = len(m.rules) - 1
-					}
 				} else {
 					// we have to reverse otherwise the position of the next element for deletion changes
-					selectedSlice := m.selectedItems.ToSlice()
+					selectedSlice := m.rules.GetSelectedIndexes()
 					sort.Slice(selectedSlice, func(i, j int) bool {
 						return selectedSlice[i] > selectedSlice[j]
 					})
@@ -229,17 +218,14 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", i))()
 					})
 					m = m.reloadRules()
-					m.cursor = 0
-					m.selectedItems = set.NewSet[int]()
+					m.rules.FocusFirst()
 				}
 
 			case "esc":
 				m.view = viewStateHome
-				m.cursor = 0
 				m = m.reloadStatus()
-				m.selectedItems = set.NewSet[int]()
 			case " ":
-				m.selectedItems = m.selectedItems.Toggle(m.cursor + 1)
+				m.rules.Toggle()
 			}
 		case m.view.isProfiles():
 			newModule, cmd, outMsg := m.profilesModule.UpdateProfilesModule(msg)
@@ -268,17 +254,12 @@ func (m model) View() string {
 		output = m.ruleForm.ViewCreateRule()
 	case m.view.isDeleteRule():
 		lines := []string{"Select rule to delete:"}
-		for i, rule := range m.rules {
-			prefix := "  "
-			if i == m.cursor && m.selectedItems.Has(i+1) {
-				prefix = ">*"
-			} else if i == m.cursor {
-				prefix = "> "
-			} else if m.selectedItems.Has(i + 1) {
-				prefix = " *"
-			}
+		m.rules.ForEach(func(rule rule, index int, isFocused, isSelected bool) {
+			focusedPrefix := lo.Ternary(isFocused, ">", " ")
+			selectedPrefix := lo.Ternary(isSelected, "*", " ")
+			prefix := focusedPrefix + selectedPrefix
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, rule.line))
-		}
+		})
 		output = strings.Join(lines, "\n")
 		output += "\n Press Space to select"
 		output += "\n Press Enter to delete"
