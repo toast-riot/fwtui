@@ -120,13 +120,6 @@ func (m model) reloadRules() model {
 	return m
 }
 
-func (m model) setLastAction(msg string) (model, tea.Cmd) {
-	m.lastAction = msg
-	return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
-		return lastActionTimeUp
-	})
-}
-
 func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m := mod
 	switch msg := msg.(type) {
@@ -135,6 +128,17 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case lastActionTimeUp:
 			m.lastAction = ""
 		}
+	case oscmd.CommandExecutedMsg:
+		lastAction := []string{"Executed commands:"}
+		lo.ForEach(msg.Cmds, func(cmd string, _ int) {
+			lastAction = append(lastAction, cmd)
+		})
+		lastAction = append(lastAction, "With output:")
+		lastAction = append(lastAction, msg.Output)
+		m.lastAction = strings.Join(lastAction, "\n")
+		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+			return lastActionTimeUp
+		})
 
 	case tea.KeyMsg:
 		key := msg.String()
