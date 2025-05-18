@@ -5,6 +5,7 @@ import (
 	"fwtui/modules/create_rule"
 	"fwtui/modules/profiles"
 	oscmd "fwtui/utils/cmd"
+	"fwtui/utils/selectable_list"
 	"fwtui/utils/set"
 	"os"
 	"sort"
@@ -62,10 +63,10 @@ type rule struct {
 }
 
 type model struct {
-	cursor int
-	menu   []menuItem
-	status string
-	rules  []rule
+	cursor   int
+	menuList *selectable_list.SelectableList[menuItem]
+	status   string
+	rules    []rule
 
 	lastAction    string
 	selectedItems set.Set[int]
@@ -81,7 +82,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := model{menu: buildMenu(), selectedItems: set.NewSet[int](), view: viewStateHome}
+	m := model{menuList: buildMenu(), selectedItems: set.NewSet[int](), view: viewStateHome}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
@@ -96,7 +97,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) resetMenu() model {
-	m.menu = buildMenu()
+	m.menuList = buildMenu()
 	m = m.reloadStatus()
 	return m
 }
@@ -151,15 +152,11 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case m.view.isHome():
 			switch key {
 			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
+				m.menuList.Prev()
 			case "down", "j":
-				if m.cursor < len(m.menu)-1 {
-					m.cursor++
-				}
+				m.menuList.Next()
 			case "enter":
-				selected := m.menu[m.cursor].action()
+				selected := m.menuList.Selected().action()
 				switch selected {
 				case menuResetUFW:
 					oscmd.RunCommand("sudo ufw reset")()
@@ -264,7 +261,7 @@ func (m model) View() string {
 
 	switch true {
 	case m.view.isHome():
-		left := renderMenu(m.menu, m.cursor)
+		left := renderMenu(m.menuList)
 		right := strings.Split(m.status, "\n")
 		output = renderTwoColumns(left, right)
 	case m.view.isCreateRule():
@@ -293,16 +290,13 @@ func (m model) View() string {
 	return output
 }
 
-func renderMenu(menu []menuItem, cursor int) []string {
+func renderMenu(menu *selectable_list.SelectableList[menuItem]) []string {
 	var lines []string
 	lines = append(lines, "", "UFW Firewall Menu:", "")
-	for i, item := range menu {
-		prefix := " "
-		if i == cursor {
-			prefix = ">"
-		}
+	menu.ForEach(func(item menuItem, index int, isSelected bool) {
+		prefix := lo.Ternary(isSelected, ">", " ")
 		lines = append(lines, fmt.Sprintf("%s %s", prefix, item.title))
-	}
+	})
 	return lines
 }
 
@@ -322,7 +316,7 @@ func renderTwoColumns(left []string, right []string) string {
 	return b.String()
 }
 
-func buildMenu() []menuItem {
+func buildMenu() *selectable_list.SelectableList[menuItem] {
 	enabled, loggingOn := getStatus()
 
 	items := []menuItem{}
@@ -349,7 +343,7 @@ func buildMenu() []menuItem {
 		menuItem{"Quit", func() string { os.Exit(0); return "" }},
 	)
 
-	return items
+	return selectable_list.NewSelectableList(items)
 }
 
 func getStatus() (enabled bool, loggingOn bool) {

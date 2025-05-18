@@ -33,3 +33,9 @@ func (s *SelectableList[T]) Prev() {
 func (s *SelectableList[T]) Selected() T {
 	return s.Items[s.Current]
 }
+
+func (s *SelectableList[T]) ForEach(f func(item T, index int, isSelected bool)) {
+	for i, item := range s.Items {
+		f(item, i, i == s.Current)
+	}
+}
