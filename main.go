@@ -20,6 +20,29 @@ type menuItem struct {
 	action func() string
 }
 
+type viewHomeState string
+
+func (v viewHomeState) isCreateRule() bool {
+	return v == viewStateCreateRule
+}
+
+func (v viewHomeState) isHome() bool {
+	return v == viewStateHome
+}
+
+func (v viewHomeState) isProfiles() bool {
+	return v == viewStateProfiles
+}
+
+func (v viewHomeState) isDeleteRule() bool {
+	return v == viewStateDeleteRule
+}
+
+const viewStateHome = "viewStateHome"
+const viewStateProfiles = "profiles"
+const viewStateCreateRule = "create_rule"
+const viewStateDeleteRule = "delete_rule"
+
 // HOME MENU
 const menuResetUFW = "RESET_UFW"
 const menuDisableUFW = "DISABLE"
@@ -28,13 +51,7 @@ const menuCreateRule = "CREATE_RULE"
 const menuDeleteRule = "DELETE_RULE"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
-
-// PROFILE MENU
-var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile}
-
 const menuProfiles = "PROFILES"
-const menuInstalledProfiles = "INSTALLED_PROFILES"
-const menuInstallProfile = "INSTALL_PROFILE"
 
 // EVENT
 const lastActionTimeUp = "LAST_ACTION_TIME_UP"
@@ -45,17 +62,17 @@ type rule struct {
 }
 
 type model struct {
-	cursor            int
-	menu              []menuItem
-	status            string
-	rules             []rule
-	installedProfiles []profiles.UFWProfile
-	profilesToInstall []profiles.UFWProfile
-	lastAction        string
-	selectedItems     set.Set[int]
+	cursor int
+	menu   []menuItem
+	status string
+	rules  []rule
 
-	view     viewState
-	ruleForm create_rule.RuleForm
+	lastAction    string
+	selectedItems set.Set[int]
+
+	view           viewHomeState
+	ruleForm       create_rule.RuleForm
+	profilesModule profiles.ProfilesModule
 }
 
 func main() {
@@ -64,12 +81,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := model{menu: buildMenu(), selectedItems: set.NewSet[int](), view: home}
+	m := model{menu: buildMenu(), selectedItems: set.NewSet[int](), view: viewStateHome}
 	m = m.reloadRules()
 	m = m.reloadStatus()
-	m = m.reloadInstalledProfiles()
-	m = m.reloadProfilesToInstall()
-
 	p := tea.NewProgram(m)
 	if err := p.Start(); err != nil {
 		fmt.Println("Error running program:", err)
@@ -89,17 +103,6 @@ func (m model) resetMenu() model {
 
 func (m model) reloadStatus() model {
 	m.status = oscmd.RunCommand("sudo ufw status verbose")()
-	return m
-}
-
-func (m model) reloadInstalledProfiles() model {
-	profiles, _ := profiles.LoadInstalledProfiles()
-	m.installedProfiles = profiles
-	return m
-}
-
-func (m model) reloadProfilesToInstall() model {
-	m.profilesToInstall = profiles.InstallableProfiles()
 	return m
 }
 
@@ -172,13 +175,15 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m = m.resetMenu()
 				case menuCreateRule:
 					m.ruleForm = create_rule.NewRuleForm()
-					m.view = createRule
+					m.view = viewStateCreateRule
 				case menuDeleteRule:
-					m.view = deleteRule
+					m.view = viewStateDeleteRule
 					m.cursor = 0
 				case menuProfiles:
-					m.view = profilesHome
-					m.cursor = 0
+					m.view = viewStateProfiles
+					module, cmd := profiles.Init()
+					m.profilesModule = module
+					return m, cmd
 				}
 			}
 		case m.view.isCreateRule():
@@ -188,9 +193,9 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case create_rule.CreateRuleCreated:
 				m = m.reloadStatus()
 				m = m.reloadRules()
-				m.view = home
+				m.view = viewStateHome
 			case create_rule.CreateRuleEsc:
-				m.view = home
+				m.view = viewStateHome
 			}
 			return m, cmd
 
@@ -228,105 +233,23 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 			case "esc":
-				m.view = home
+				m.view = viewStateHome
 				m.cursor = 0
 				m = m.reloadStatus()
 				m.selectedItems = set.NewSet[int]()
 			case " ":
 				m.selectedItems = m.selectedItems.Toggle(m.cursor + 1)
 			}
-
-		case m.view.isProfilesHome():
-			switch key {
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "down", "j":
-				if m.cursor < len(profileHomeActions)-1 {
-					m.cursor++
-				}
-			case "esc":
-				m.view = home
-				m.cursor = 0
-			case "enter":
-				switch profileHomeActions[m.cursor] {
-				case menuInstalledProfiles:
-					m.view = installedProfilesList
-					m.cursor = 0
-				case menuInstallProfile:
-					m.view = installProfile
-					m.cursor = 0
-				}
-			}
-		case m.view.isInstalledProfilesList():
-			switch key {
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "down", "j":
-				if m.cursor < len(m.installedProfiles)-1 {
-					m.cursor++
-				}
-			case "esc":
-				m.view = profilesHome
-				m.cursor = 0
-				m.selectedItems = set.NewSet[int]()
-			case " ":
-				m.selectedItems = m.selectedItems.Toggle(m.cursor)
-			case "enter":
-				var output string
-				if m.selectedItems.IsEmpty() {
-					profile := m.installedProfiles[m.cursor]
-					output = oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
-				} else {
-					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
-						profile := m.installedProfiles[i]
-						output += oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
-					})
-					m.cursor = 0
-					m.selectedItems = set.NewSet[int]()
-				}
+		case m.view.isProfiles():
+			newModule, cmd, outMsg := m.profilesModule.UpdateProfilesModule(msg)
+			m.profilesModule = newModule
+			switch outMsg {
+			case profiles.ProfilesOutMsgEsc:
+				m.view = viewStateHome
 				m = m.reloadStatus()
 				m = m.reloadRules()
-				return m.setLastAction(output)
 			}
-
-		case m.view.isInstallProfile():
-			switch key {
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "down", "j":
-				if m.cursor < len(m.profilesToInstall)-1 {
-					m.cursor++
-				}
-			case "esc":
-				m.view = profilesHome
-				m.cursor = 0
-				m.selectedItems = set.NewSet[int]()
-			case " ":
-				m.selectedItems = m.selectedItems.Toggle(m.cursor)
-			case "enter":
-				var output string
-				if m.selectedItems.IsEmpty() {
-					profile := m.profilesToInstall[m.cursor]
-					output = profiles.CreateProfile(profile)
-				} else {
-					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
-						profile := m.profilesToInstall[i]
-						output += "\n" + profiles.CreateProfile(profile)
-					})
-					m.cursor = 0
-					m.selectedItems = set.NewSet[int]()
-				}
-
-				m = m.reloadInstalledProfiles()
-				m = m.reloadProfilesToInstall()
-				return m.setLastAction(output)
-			}
+			return m, cmd
 		}
 	}
 	return m, nil
@@ -358,55 +281,8 @@ func (m model) View() string {
 		output = strings.Join(lines, "\n")
 		output += "\n Press Space to select"
 		output += "\n Press Enter to delete"
-	case m.view.isProfilesHome():
-		lines := []string{"Select profile action:"}
-		for i, item := range profileHomeActions {
-			prefix := " "
-			if i == m.cursor {
-				prefix = ">"
-			}
-			var itemName string
-			switch item {
-			case menuInstalledProfiles:
-				itemName = "List installed"
-			case menuInstallProfile:
-				itemName = "Install"
-			}
-			lines = append(lines, fmt.Sprintf("%s %s", prefix, itemName))
-		}
-		output = strings.Join(lines, "\n")
-	case m.view.isInstalledProfilesList():
-		lines := []string{"Select profile:"}
-		for i, profile := range m.installedProfiles {
-			prefix := "  "
-			if i == m.cursor && m.selectedItems.Has(i) {
-				prefix = ">*"
-			} else if i == m.cursor {
-				prefix = "> "
-			} else if m.selectedItems.Has(i) {
-				prefix = " *"
-			}
-			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
-		}
-		output = strings.Join(lines, "\n")
-		output += "\n Press Space to select"
-		output += "\n Press Enter to allow"
-	case m.view.isInstallProfile():
-		lines := []string{"Select profile to install:"}
-		for i, profile := range m.profilesToInstall {
-			prefix := "  "
-			if i == m.cursor && m.selectedItems.Has(i) {
-				prefix = ">*"
-			} else if i == m.cursor {
-				prefix = "> "
-			} else if m.selectedItems.Has(i) {
-				prefix = " *"
-			}
-			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
-		}
-		output = strings.Join(lines, "\n")
-		output += "\n Press Space to select"
-		output += "\n Press Enter to delete"
+	case m.view.isProfiles():
+		output = m.profilesModule.ViewProfiles()
 	}
 
 	output += "\n" + m.lastAction
