@@ -1,7 +1,8 @@
-package main
+package profiles
 
 import (
 	"fmt"
+	oscmd "fwtui/utils/cmd"
 	"os"
 	"strings"
 
@@ -15,8 +16,8 @@ type UFWProfile struct {
 	Installed bool
 }
 
-func installableProfiles() []UFWProfile {
-	installedProfiles, _ := loadInstalledProfiles()
+func InstallableProfiles() []UFWProfile {
+	installedProfiles, _ := LoadInstalledProfiles()
 	installedProfileNames := lo.Map(installedProfiles, func(p UFWProfile, _ int) string {
 		return p.Name
 	})
@@ -83,20 +84,20 @@ func installableProfiles() []UFWProfile {
 	return profiles
 }
 
-func createProfile(p UFWProfile) string {
+func CreateProfile(p UFWProfile) string {
 	content := fmt.Sprintf("[%s]\ntitle=%s\ndescription=%s\nports=%s\n",
 		p.Name, p.Name, p.Title, strings.Join(p.Ports, "|"))
 	err := os.WriteFile("/etc/ufw/applications.d/"+p.Name+".profile", []byte(content), 0644)
 	if err != nil {
 		return fmt.Sprintf("Error creating profile: %s", err)
 	}
-	runCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
+	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
 	return fmt.Sprintf("Profile %s created", p.Name)
 }
 
-func loadInstalledProfiles() ([]UFWProfile, error) {
+func LoadInstalledProfiles() ([]UFWProfile, error) {
 
-	out := runCommand("sudo ufw app list")()
+	out := oscmd.RunCommand("sudo ufw app list")()
 
 	profileNames := strings.Split(strings.TrimSpace(out), "\n")[1:]
 
@@ -116,7 +117,7 @@ func loadInstalledProfiles() ([]UFWProfile, error) {
 }
 
 func getUFWProfileInfo(name string) (UFWProfile, error) {
-	out := runCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))()
+	out := oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))()
 	lines := strings.Split(out, "\n")
 
 	profile := UFWProfile{

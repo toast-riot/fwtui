@@ -1,42 +1,16 @@
-package main
+package create_rule
 
 import (
 	"fmt"
+	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/selectable_list"
+	stringsext "fwtui/utils/strings"
 	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/samber/lo"
 )
-
-type Protocol string
-
-const (
-	ProtocolTcp  Protocol = "tcp"
-	ProtocolUdp  Protocol = "udp"
-	ProtocolBoth Protocol = "tcp/udp"
-)
-
-var protocols = []Protocol{ProtocolBoth, ProtocolTcp, ProtocolUdp}
-
-type Action string
-
-const (
-	ActionAllow Action = "allow"
-	ActionDeny  Action = "deny"
-)
-
-var actions = []Action{ActionAllow, ActionDeny}
-
-type Direction string
-
-const (
-	DirectionIn  Direction = "in"
-	DirectionOut Direction = "out"
-)
-
-var directions = []Direction{DirectionIn, DirectionOut}
 
 type Field string
 
@@ -113,15 +87,15 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 		case "backspace":
 			switch form.selectedField.Selected() {
 			case RuleFormPort:
-				form.port = trimLastChar(form.port)
+				form.port = stringsext.TrimLastChar(form.port)
 			case RuleFormComment:
-				form.comment = trimLastChar(form.comment)
+				form.comment = stringsext.TrimLastChar(form.comment)
 			}
 		case "enter":
 			if f.isValid() {
 				portProtocol := lo.Ternary(form.protocol.Selected() == ProtocolBoth, form.port, form.port+"/"+string(form.protocol.Selected()))
 				cmd := fmt.Sprintf("sudo ufw %s %s comment '%s'", form.action.Selected(), portProtocol, form.comment)
-				runCommand(cmd)()
+				oscmd.RunCommand(cmd)()
 				return form, nil, CreateRuleCreated
 			}
 		case "esc":
@@ -136,13 +110,6 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 		}
 	}
 	return form, nil, ""
-}
-
-func trimLastChar(s string) string {
-	if len(s) > 0 {
-		return s[:len(s)-1]
-	}
-	return s
 }
 
 func (f RuleForm) ViewCreateRule() string {

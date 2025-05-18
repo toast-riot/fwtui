@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"fwtui/modules/create_rule"
+	"fwtui/modules/profiles"
+	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/set"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -17,43 +19,6 @@ type menuItem struct {
 	title  string
 	action func() string
 }
-
-// VIEW state
-type viewState string
-
-func (v viewState) isCreateRule() bool {
-	return v == createRule
-}
-
-func (v viewState) isHome() bool {
-	return v == home
-}
-
-func (v viewState) isProfilesHome() bool {
-	return v == profilesHome
-}
-
-func (v viewState) isInstalledProfilesList() bool {
-	return v == installedProfilesList
-}
-
-func (v viewState) isInstallProfile() bool {
-	return v == installProfile
-}
-
-func (v viewState) isDeleteRule() bool {
-	return v == deleteRule
-}
-
-const home = "home"
-
-const profilesHome = "profiles_home"
-
-const installedProfilesList = "installed_profiles_list"
-const installProfile = "install_profile"
-
-const createRule = "create_rule"
-const deleteRule = "delete_rule"
 
 // HOME MENU
 const menuResetUFW = "RESET_UFW"
@@ -84,13 +49,13 @@ type model struct {
 	menu              []menuItem
 	status            string
 	rules             []rule
-	installedProfiles []UFWProfile
-	profilesToInstall []UFWProfile
+	installedProfiles []profiles.UFWProfile
+	profilesToInstall []profiles.UFWProfile
 	lastAction        string
 	selectedItems     set.Set[int]
 
 	view     viewState
-	ruleForm RuleForm
+	ruleForm create_rule.RuleForm
 }
 
 func main() {
@@ -123,23 +88,23 @@ func (m model) resetMenu() model {
 }
 
 func (m model) reloadStatus() model {
-	m.status = runCommand("sudo ufw status verbose")()
+	m.status = oscmd.RunCommand("sudo ufw status verbose")()
 	return m
 }
 
 func (m model) reloadInstalledProfiles() model {
-	profiles, _ := loadInstalledProfiles()
+	profiles, _ := profiles.LoadInstalledProfiles()
 	m.installedProfiles = profiles
 	return m
 }
 
 func (m model) reloadProfilesToInstall() model {
-	m.profilesToInstall = installableProfiles()
+	m.profilesToInstall = profiles.InstallableProfiles()
 	return m
 }
 
 func (m model) reloadRules() model {
-	output := runCommand("sudo ufw status numbered")()
+	output := oscmd.RunCommand("sudo ufw status numbered")()
 	lines := strings.Split(output, "\n")
 	lines = lines[4:(len(lines) - 2)]
 	rules := lo.Map(lines, func(line string, index int) rule {
@@ -190,23 +155,23 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selected := m.menu[m.cursor].action()
 				switch selected {
 				case menuResetUFW:
-					runCommand("sudo ufw reset")()
+					oscmd.RunCommand("sudo ufw reset")()
 					m = m.resetMenu()
 				case menuDisableUFW:
-					runCommand("sudo ufw disable")()
+					oscmd.RunCommand("sudo ufw disable")()
 					m = m.resetMenu()
 					m.cursor = 0
 				case menuEnableUFW:
-					runCommand("sudo ufw enable")()
+					oscmd.RunCommand("sudo ufw enable")()
 					m = m.resetMenu()
 				case menuEnableLogging:
-					runCommand("sudo ufw logging on")()
+					oscmd.RunCommand("sudo ufw logging on")()
 					m = m.resetMenu()
 				case menuDisableLogging:
-					runCommand("sudo ufw logging off")()
+					oscmd.RunCommand("sudo ufw logging off")()
 					m = m.resetMenu()
 				case menuCreateRule:
-					m.ruleForm = NewRuleForm()
+					m.ruleForm = create_rule.NewRuleForm()
 					m.view = createRule
 				case menuDeleteRule:
 					m.view = deleteRule
@@ -220,11 +185,11 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newForm, cmd, outMsg := m.ruleForm.UpdateRuleForm(msg)
 			m.ruleForm = newForm
 			switch outMsg {
-			case CreateRuleCreated:
+			case create_rule.CreateRuleCreated:
 				m = m.reloadStatus()
 				m = m.reloadRules()
 				m.view = home
-			case CreateRuleEsc:
+			case create_rule.CreateRuleEsc:
 				m.view = home
 			}
 			return m, cmd
@@ -241,7 +206,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "enter":
 				if m.selectedItems.IsEmpty() {
-					runCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
+					oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.cursor+1))()
 					m = m.reloadRules()
 
 					if m.cursor > len(m.rules)-1 {
@@ -255,7 +220,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 
 					lo.ForEach(selectedSlice, func(i int, _ int) {
-						runCommand(fmt.Sprintf("yes | sudo ufw delete %d", i))()
+						oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", i))()
 					})
 					m = m.reloadRules()
 					m.cursor = 0
@@ -314,11 +279,11 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var output string
 				if m.selectedItems.IsEmpty() {
 					profile := m.installedProfiles[m.cursor]
-					output = runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+					output = oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
 				} else {
 					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
 						profile := m.installedProfiles[i]
-						output += runCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+						output += oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
 					})
 					m.cursor = 0
 					m.selectedItems = set.NewSet[int]()
@@ -348,11 +313,11 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var output string
 				if m.selectedItems.IsEmpty() {
 					profile := m.profilesToInstall[m.cursor]
-					output = createProfile(profile)
+					output = profiles.CreateProfile(profile)
 				} else {
 					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
 						profile := m.profilesToInstall[i]
-						output += "\n" + createProfile(profile)
+						output += "\n" + profiles.CreateProfile(profile)
 					})
 					m.cursor = 0
 					m.selectedItems = set.NewSet[int]()
@@ -508,7 +473,7 @@ func buildMenu() []menuItem {
 }
 
 func getStatus() (enabled bool, loggingOn bool) {
-	output := runCommand("sudo ufw status verbose")()
+	output := oscmd.RunCommand("sudo ufw status verbose")()
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "Status: active") {
@@ -519,15 +484,4 @@ func getStatus() (enabled bool, loggingOn bool) {
 		}
 	}
 	return
-}
-
-func runCommand(cmdStr string) func() string {
-	return func() string {
-		cmd := exec.Command("bash", "-c", cmdStr) // Use a shell to interpret the pipe
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Sprintf("Error: %s\n%s", err, out)
-		}
-		return string(out)
-	}
 }
