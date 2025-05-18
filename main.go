@@ -114,7 +114,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		lastAction = append(lastAction, "With output:")
 		lastAction = append(lastAction, msg.Output)
 		m.lastAction = strings.Join(lastAction, "\n")
-		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
 			return lastActionTimeUp
 		})
 
@@ -194,7 +194,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 
 					lo.ForEach(selectedSlice, func(i int, _ int) {
-						oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", i))()
+						oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", i+1))()
 					})
 					m = m.reloadRules()
 					m.rules.FocusFirst()

@@ -43,3 +43,12 @@ func (s *SelectableList[T]) ForEach(f func(item T, index int, isSelected bool)) 
 func (s *SelectableList[T]) FocusFirst() {
 	s.Current = 0
 }
+func (s *SelectableList[T]) GetItems() []T {
+	return s.Items
+}
+func (s *SelectableList[T]) SetItems(items []T) {
+	if s.Current >= len(items) {
+		s.Current = len(items) - 1
+	}
+	s.Items = items
+}
