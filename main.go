@@ -16,6 +16,24 @@ import (
 	"github.com/samber/lo"
 )
 
+func main() {
+	if os.Geteuid() != 0 {
+		fmt.Println("This action requires root. Please run with sudo.")
+		os.Exit(1)
+	}
+
+	m := model{menuList: buildMenu(), view: viewStateHome}
+	m = m.reloadRules()
+	m = m.reloadStatus()
+	p := tea.NewProgram(m)
+	if err := p.Start(); err != nil {
+		fmt.Println("Error running program:", err)
+		os.Exit(1)
+	}
+}
+
+// MODEL
+
 type menuItem struct {
 	title  string
 	action func() string
@@ -74,50 +92,11 @@ type model struct {
 	profilesModule profiles.ProfilesModule
 }
 
-func main() {
-	if os.Geteuid() != 0 {
-		fmt.Println("This action requires root. Please run with sudo.")
-		os.Exit(1)
-	}
-
-	m := model{menuList: buildMenu(), view: viewStateHome}
-	m = m.reloadRules()
-	m = m.reloadStatus()
-	p := tea.NewProgram(m)
-	if err := p.Start(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
-	}
-}
-
 func (m model) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) resetMenu() model {
-	m.menuList = buildMenu()
-	m = m.reloadStatus()
-	return m
-}
-
-func (m model) reloadStatus() model {
-	m.status = oscmd.RunCommand("sudo ufw status verbose")()
-	return m
-}
-
-func (m model) reloadRules() model {
-	output := oscmd.RunCommand("sudo ufw status numbered")()
-	lines := strings.Split(output, "\n")
-	lines = lines[4:(len(lines) - 2)]
-	rules := lo.Map(lines, func(line string, index int) rule {
-		return rule{
-			number: index,
-			line:   line,
-		}
-	})
-	m.rules.SetItems(rules)
-	return m
-}
+// UPDATE
 
 func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m := mod
@@ -242,6 +221,77 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) resetMenu() model {
+	m.menuList = buildMenu()
+	m = m.reloadStatus()
+	return m
+}
+
+func (m model) reloadStatus() model {
+	m.status = oscmd.RunCommand("sudo ufw status verbose")()
+	return m
+}
+
+func (m model) reloadRules() model {
+	output := oscmd.RunCommand("sudo ufw status numbered")()
+	lines := strings.Split(output, "\n")
+	lines = lines[4:(len(lines) - 2)]
+	rules := lo.Map(lines, func(line string, index int) rule {
+		return rule{
+			number: index,
+			line:   line,
+		}
+	})
+	m.rules.SetItems(rules)
+	return m
+}
+
+func buildMenu() *selectable_list.SelectableList[menuItem] {
+	enabled, loggingOn := getStatus()
+
+	items := []menuItem{}
+
+	if enabled {
+		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
+		items = append(items,
+			menuItem{"Profiles", func() string { return menuProfiles }},
+			menuItem{"Create rule", func() string { return menuCreateRule }},
+			menuItem{"Delete rule", func() string { return menuDeleteRule }},
+		)
+		if loggingOn {
+			items = append(items, menuItem{"Disable logging", func() string { return menuDisableLogging }})
+		} else {
+			items = append(items, menuItem{"Enable logging", func() string { return menuEnableLogging }})
+		}
+	} else {
+		items = append(items, menuItem{"Enable", func() string { return menuEnableUFW }})
+
+	}
+
+	items = append(items,
+		menuItem{"Reset UFW", func() string { return menuResetUFW }},
+		menuItem{"Quit", func() string { os.Exit(0); return "" }},
+	)
+
+	return selectable_list.NewSelectableList(items)
+}
+
+func getStatus() (enabled bool, loggingOn bool) {
+	output := oscmd.RunCommand("sudo ufw status verbose")()
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Status: active") {
+			enabled = true
+		}
+		if strings.HasPrefix(line, "Logging:") && strings.Contains(line, "on") {
+			loggingOn = true
+		}
+	}
+	return
+}
+
+// VIEW
+
 func (m model) View() string {
 	var output string
 
@@ -295,48 +345,4 @@ func renderTwoColumns(left []string, right []string) string {
 		fmt.Fprintf(&b, "%-30s | %s\n", l, r)
 	}
 	return b.String()
-}
-
-func buildMenu() *selectable_list.SelectableList[menuItem] {
-	enabled, loggingOn := getStatus()
-
-	items := []menuItem{}
-
-	if enabled {
-		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
-		items = append(items,
-			menuItem{"Profiles", func() string { return menuProfiles }},
-			menuItem{"Create rule", func() string { return menuCreateRule }},
-			menuItem{"Delete rule", func() string { return menuDeleteRule }},
-		)
-		if loggingOn {
-			items = append(items, menuItem{"Disable logging", func() string { return menuDisableLogging }})
-		} else {
-			items = append(items, menuItem{"Enable logging", func() string { return menuEnableLogging }})
-		}
-	} else {
-		items = append(items, menuItem{"Enable", func() string { return menuEnableUFW }})
-
-	}
-
-	items = append(items,
-		menuItem{"Reset UFW", func() string { return menuResetUFW }},
-		menuItem{"Quit", func() string { os.Exit(0); return "" }},
-	)
-
-	return selectable_list.NewSelectableList(items)
-}
-
-func getStatus() (enabled bool, loggingOn bool) {
-	output := oscmd.RunCommand("sudo ufw status verbose")()
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Status: active") {
-			enabled = true
-		}
-		if strings.HasPrefix(line, "Logging:") && strings.Contains(line, "on") {
-			loggingOn = true
-		}
-	}
-	return
 }

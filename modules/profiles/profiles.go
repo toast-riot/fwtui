@@ -10,6 +10,8 @@ import (
 	"github.com/samber/lo"
 )
 
+// MODEl
+
 var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile}
 
 const menuInstalledProfiles = "INSTALLED_PROFILES"
@@ -32,6 +34,8 @@ func Init() (ProfilesModule, tea.Cmd) {
 	model = model.reloadProfilesToInstall()
 	return model, nil
 }
+
+// UPDATE
 
 type ProfilesOutMsg string
 
@@ -153,6 +157,8 @@ func (m ProfilesModule) reloadProfilesToInstall() ProfilesModule {
 	m.profilesToInstall = InstallableProfiles()
 	return m
 }
+
+// VIEW
 
 func (m ProfilesModule) ViewProfiles() string {
 	var output string

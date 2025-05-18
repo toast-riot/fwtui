@@ -12,6 +12,8 @@ import (
 	"github.com/samber/lo"
 )
 
+// MODEL
+
 type Field string
 
 const (
@@ -49,6 +51,8 @@ func NewRuleForm() RuleForm {
 		selectedField: selectable_list.NewSelectableList(fields),
 	}
 }
+
+// UPDATE
 
 type CreateRuleOutMsg = string
 
@@ -111,6 +115,8 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 	}
 	return form, nil, ""
 }
+
+// VIEW
 
 func (f RuleForm) ViewCreateRule() string {
 	var lines []string
