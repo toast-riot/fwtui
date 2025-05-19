@@ -1,16 +1,26 @@
 package selectable_list
 
-type SelectableList[T any] struct {
+type SelectableList[T comparable] struct {
 	Items   []T
 	Current int // index of selected item
 }
 
 // NewSelectableList creates a new selectable list, defaulting to the first item.
-func NewSelectableList[T any](items []T) *SelectableList[T] {
+func NewSelectableList[T comparable](items []T) *SelectableList[T] {
 	return &SelectableList[T]{
 		Items:   items,
 		Current: 0,
 	}
+}
+
+func (s *SelectableList[T]) Select(item T) *SelectableList[T] {
+	for i, v := range s.Items {
+		if v == item {
+			s.Current = i
+			return s
+		}
+	}
+	return s
 }
 
 // Next moves selection forward (wraps around).

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"fwtui/modules/create_rule"
+	_default "fwtui/modules/default"
 	"fwtui/modules/profiles"
 	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/multiselect_list"
@@ -36,7 +37,7 @@ func main() {
 
 type menuItem struct {
 	title  string
-	action func() string
+	action string
 }
 
 type viewHomeState string
@@ -57,19 +58,26 @@ func (v viewHomeState) isDeleteRule() bool {
 	return v == viewStateDeleteRule
 }
 
+func (v viewHomeState) isSetDefault() bool {
+	return v == viewSetDefault
+}
+
 const viewStateHome = "viewStateHome"
 const viewStateProfiles = "profiles"
 const viewStateCreateRule = "create_rule"
 const viewStateDeleteRule = "delete_rule"
+const viewSetDefault = "set_default"
 
 // HOME MENU
 const menuResetUFW = "RESET_UFW"
+const menuQuit = "QUIT"
 const menuDisableUFW = "DISABLE"
 const menuEnableUFW = "ENABLE"
 const menuCreateRule = "CREATE_RULE"
 const menuDeleteRule = "DELETE_RULE"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
+const menuSetDefault = "SET_DEFAULT"
 const menuProfiles = "PROFILES"
 
 // EVENT
@@ -88,8 +96,9 @@ type model struct {
 
 	rules multiselect_list.MultiSelectableList[rule]
 
-	ruleForm       create_rule.RuleForm
-	profilesModule profiles.ProfilesModule
+	ruleForm          create_rule.RuleForm
+	profilesModule    profiles.ProfilesModule
+	setDefaultsModule _default.DefaultModule
 }
 
 func (m model) Init() tea.Cmd {
@@ -133,7 +142,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "j":
 				m.menuList.Next()
 			case "enter":
-				selected := m.menuList.Selected().action()
+				selected := m.menuList.Selected().action
 				switch selected {
 				case menuResetUFW:
 					oscmd.RunCommand("sudo ufw reset")()
@@ -156,11 +165,24 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.view = viewStateCreateRule
 				case menuDeleteRule:
 					m.view = viewStateDeleteRule
+				case menuSetDefault:
+					m.view = viewSetDefault
+					result := _default.ParseUfwDefaults(m.status)
+
+					if result.IsOk() {
+						module := _default.Init(result.Unwrap())
+						m.setDefaultsModule = module
+						return m, nil
+					} else {
+						return m.setLastAction(result.Err().Error())
+					}
 				case menuProfiles:
 					m.view = viewStateProfiles
 					module, cmd := profiles.Init()
 					m.profilesModule = module
 					return m, cmd
+				case menuQuit:
+					return m, tea.Quit
 				}
 			}
 		case m.view.isCreateRule():
@@ -216,9 +238,26 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.reloadRules()
 			}
 			return m, cmd
+
+		case m.view.isSetDefault():
+			newModule, cmd, outMsg := m.setDefaultsModule.UpdateDefaultsModule(msg)
+			m.setDefaultsModule = newModule
+			switch outMsg {
+			case _default.DefaultRuleEsc:
+				m.view = viewStateHome
+				m = m.reloadStatus()
+			}
+			return m, cmd
 		}
 	}
 	return m, nil
+}
+
+func (m model) setLastAction(msg string) (model, tea.Cmd) {
+	m.lastAction = msg
+	return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
+		return lastActionTimeUp
+	})
 }
 
 func (m model) resetMenu() model {
@@ -252,25 +291,26 @@ func buildMenu() *selectable_list.SelectableList[menuItem] {
 	items := []menuItem{}
 
 	if enabled {
-		items = append(items, menuItem{"Disable", func() string { return menuDisableUFW }})
+		items = append(items, menuItem{"Disable", menuDisableUFW})
+		items = append(items, menuItem{"Set defaults", menuSetDefault})
 		items = append(items,
-			menuItem{"Profiles", func() string { return menuProfiles }},
-			menuItem{"Create rule", func() string { return menuCreateRule }},
-			menuItem{"Delete rule", func() string { return menuDeleteRule }},
+			menuItem{"Profiles", menuProfiles},
+			menuItem{"Create rule", menuCreateRule},
+			menuItem{"Delete rule", menuDeleteRule},
 		)
 		if loggingOn {
-			items = append(items, menuItem{"Disable logging", func() string { return menuDisableLogging }})
+			items = append(items, menuItem{"Disable logging", menuDisableLogging})
 		} else {
-			items = append(items, menuItem{"Enable logging", func() string { return menuEnableLogging }})
+			items = append(items, menuItem{"Enable logging", menuEnableLogging})
 		}
 	} else {
-		items = append(items, menuItem{"Enable", func() string { return menuEnableUFW }})
+		items = append(items, menuItem{"Enable", menuEnableUFW})
 
 	}
 
 	items = append(items,
-		menuItem{"Reset UFW", func() string { return menuResetUFW }},
-		menuItem{"Quit", func() string { os.Exit(0); return "" }},
+		menuItem{"Reset UFW", menuResetUFW},
+		menuItem{"Quit", menuQuit},
 	)
 
 	return selectable_list.NewSelectableList(items)
@@ -315,6 +355,8 @@ func (m model) View() string {
 		output += "\n Press Enter to delete"
 	case m.view.isProfiles():
 		output = m.profilesModule.ViewProfiles()
+	case m.view.isSetDefault():
+		output = m.setDefaultsModule.ViewSetDefaults()
 	}
 
 	output += "\n" + m.lastAction
