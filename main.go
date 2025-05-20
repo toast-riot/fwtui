@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"fwtui/domain/ufw"
 	"fwtui/modules/create_rule"
 	"fwtui/modules/default_policies"
 	"fwtui/modules/profiles"
@@ -145,20 +146,20 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selected := m.menuList.Selected().action
 				switch selected {
 				case menuResetUFW:
-					oscmd.RunCommand("sudo ufw reset")
+					ufw.Reset()
 					m = m.resetMenu()
 				case menuDisableUFW:
-					oscmd.RunCommand("sudo ufw disable")
+					ufw.Disable()
 					m = m.resetMenu()
 					m.menuList.FocusFirst()
 				case menuEnableUFW:
-					oscmd.RunCommand("sudo ufw enable")
+					ufw.Enable()
 					m = m.resetMenu()
 				case menuEnableLogging:
-					oscmd.RunCommand("sudo ufw logging on")
+					ufw.EnableLogging()
 					m = m.resetMenu()
 				case menuDisableLogging:
-					oscmd.RunCommand("sudo ufw logging off")
+					ufw.DisableLogging()
 					m = m.resetMenu()
 				case menuCreateRule:
 					m.ruleForm = create_rule.NewRuleForm()
@@ -206,7 +207,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rules.Next()
 			case "enter":
 				if m.rules.NoneSelected() {
-					oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", m.rules.FocusedIndex()+1))
+					ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
 					m = m.reloadRules()
 				} else {
 					// we have to reverse otherwise the position of the next element for deletion changes
@@ -216,7 +217,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 
 					lo.ForEach(selectedSlice, func(i int, _ int) {
-						oscmd.RunCommand(fmt.Sprintf("yes | sudo ufw delete %d", i+1))
+						ufw.DeleteRuleByNumber(i + 1)
 					})
 					m = m.reloadRules()
 					m.rules.FocusFirst()
@@ -267,13 +268,12 @@ func (m model) resetMenu() model {
 }
 
 func (m model) reloadStatus() model {
-	m.status = oscmd.RunCommand("sudo ufw status verbose")
+	m.status = ufw.StatusVerbose()
 	return m
 }
 
 func (m model) reloadRules() model {
-	output := oscmd.RunCommand("sudo ufw status numbered")
-	lines := strings.Split(output, "\n")
+	lines := strings.Split(ufw.StatusNumbered(), "\n")
 	lines = lines[4:(len(lines) - 2)]
 	rules := lo.Map(lines, func(line string, index int) rule {
 		return rule{
@@ -317,8 +317,7 @@ func buildMenu() *selectable_list.SelectableList[menuItem] {
 }
 
 func getStatus() (enabled bool, loggingOn bool) {
-	output := oscmd.RunCommand("sudo ufw status verbose")
-	lines := strings.Split(output, "\n")
+	lines := strings.Split(ufw.StatusVerbose(), "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "Status: active") {
 			enabled = true

@@ -2,7 +2,7 @@ package create_profile
 
 import (
 	"fmt"
-	"fwtui/entity"
+	"fwtui/domain/entity"
 	oscmd "fwtui/utils/cmd"
 	stringsext "fwtui/utils/strings"
 	"strings"
