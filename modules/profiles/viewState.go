@@ -14,7 +14,12 @@ func (v viewState) isViewInstall() bool {
 	return v == viewStateInstallProfile
 }
 
+func (v viewState) isViewCreate() bool {
+	return v == viewStateCreateProfile
+}
+
 const viewStateHome = "home"
 
 const viewStateInstalledProfilesList = "installed_profiles_list"
 const viewStateInstallProfile = "install_profile"
+const viewStateCreateProfile = "create_profile"

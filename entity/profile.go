@@ -1,4 +1,4 @@
-package profiles
+package entity
 
 import (
 	"fmt"
@@ -10,10 +10,73 @@ import (
 )
 
 type UFWProfile struct {
-	Name      string
-	Title     string
-	Ports     []string
-	Installed bool
+	Name        string
+	Title       string
+	Description string
+	Ports       []string
+	Installed   bool
+}
+
+func CreateProfile(p UFWProfile) string {
+	content := fmt.Sprintf("[%s]\ntitle=%s\ndescription=%s\nports=%s\n",
+		p.Name, p.Name, p.Title, strings.Join(p.Ports, "|"))
+	err := os.WriteFile("/etc/ufw/applications.d/"+p.Name+".profile", []byte(content), 0644)
+	if err != nil {
+		return fmt.Sprintf("Error creating profile: %s", err)
+	}
+	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
+	return fmt.Sprintf("Profile %s created", p.Name)
+}
+
+func LoadInstalledProfiles() ([]UFWProfile, error) {
+
+	out := oscmd.RunCommand("sudo ufw app list")()
+
+	profileNames := strings.Split(strings.TrimSpace(out), "\n")[1:]
+
+	var profiles []UFWProfile
+	for _, name := range profileNames {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		profile, err := getUFWProfileInfo(name)
+		if err != nil {
+			continue
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
+}
+
+func getUFWProfileInfo(name string) (UFWProfile, error) {
+	out := oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))()
+	lines := strings.Split(out, "\n")
+
+	profile := UFWProfile{
+		Name:      name,
+		Installed: true,
+	}
+
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Profile:"):
+			profile.Name = strings.TrimSpace(strings.TrimPrefix(line, "Profile:"))
+		case strings.HasPrefix(line, "Title:"):
+			profile.Title = strings.TrimSpace(strings.TrimPrefix(line, "Title:"))
+		case strings.HasPrefix(line, "Ports:") || strings.HasPrefix(line, "Port:"):
+			for j := i + 1; j < len(lines); j++ {
+				portLine := strings.TrimSpace(lines[j])
+				if portLine == "" {
+					break
+				}
+				profile.Ports = append(profile.Ports, portLine)
+			}
+		}
+	}
+
+	return profile, nil
 }
 
 func InstallableProfiles() []UFWProfile {
@@ -82,66 +145,4 @@ func InstallableProfiles() []UFWProfile {
 	})
 
 	return profiles
-}
-
-func CreateProfile(p UFWProfile) string {
-	content := fmt.Sprintf("[%s]\ntitle=%s\ndescription=%s\nports=%s\n",
-		p.Name, p.Name, p.Title, strings.Join(p.Ports, "|"))
-	err := os.WriteFile("/etc/ufw/applications.d/"+p.Name+".profile", []byte(content), 0644)
-	if err != nil {
-		return fmt.Sprintf("Error creating profile: %s", err)
-	}
-	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
-	return fmt.Sprintf("Profile %s created", p.Name)
-}
-
-func LoadInstalledProfiles() ([]UFWProfile, error) {
-
-	out := oscmd.RunCommand("sudo ufw app list")()
-
-	profileNames := strings.Split(strings.TrimSpace(out), "\n")[1:]
-
-	var profiles []UFWProfile
-	for _, name := range profileNames {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		profile, err := getUFWProfileInfo(name)
-		if err != nil {
-			continue
-		}
-		profiles = append(profiles, profile)
-	}
-	return profiles, nil
-}
-
-func getUFWProfileInfo(name string) (UFWProfile, error) {
-	out := oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))()
-	lines := strings.Split(out, "\n")
-
-	profile := UFWProfile{
-		Name:      name,
-		Installed: true,
-	}
-
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "Profile:"):
-			profile.Name = strings.TrimSpace(strings.TrimPrefix(line, "Profile:"))
-		case strings.HasPrefix(line, "Title:"):
-			profile.Title = strings.TrimSpace(strings.TrimPrefix(line, "Title:"))
-		case strings.HasPrefix(line, "Ports:") || strings.HasPrefix(line, "Port:"):
-			for j := i + 1; j < len(lines); j++ {
-				portLine := strings.TrimSpace(lines[j])
-				if portLine == "" {
-					break
-				}
-				profile.Ports = append(profile.Ports, portLine)
-			}
-		}
-	}
-
-	return profile, nil
 }

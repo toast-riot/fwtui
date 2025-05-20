@@ -2,6 +2,8 @@ package profiles
 
 import (
 	"fmt"
+	"fwtui/entity"
+	"fwtui/modules/create_profile"
 	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/set"
 	"strings"
@@ -12,17 +14,20 @@ import (
 
 // MODEl
 
-var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile}
+var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile, menuCreateProfile}
 
 const menuInstalledProfiles = "INSTALLED_PROFILES"
 const menuInstallProfile = "INSTALL_PROFILE"
+const menuCreateProfile = "CREATE_PROFILE"
 
 type ProfilesModule struct {
 	view              viewState
 	cursor            int
-	installedProfiles []UFWProfile
-	profilesToInstall []UFWProfile
+	installedProfiles []entity.UFWProfile
+	profilesToInstall []entity.UFWProfile
 	selectedItems     set.Set[int]
+
+	createProfileModule create_profile.ProfileForm
 }
 
 func Init() (ProfilesModule, tea.Cmd) {
@@ -67,6 +72,10 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 					m.cursor = 0
 				case menuInstallProfile:
 					m.view = viewStateInstallProfile
+					m.cursor = 0
+				case menuCreateProfile:
+					m.view = viewStateCreateProfile
+					m.createProfileModule = create_profile.NewProfileForm()
 					m.cursor = 0
 				}
 			}
@@ -127,11 +136,11 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 
 				if m.selectedItems.IsEmpty() {
 					profile := m.profilesToInstall[m.cursor]
-					output = CreateProfile(profile)
+					output = entity.CreateProfile(profile)
 				} else {
 					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
 						profile := m.profilesToInstall[i]
-						output += "\n" + CreateProfile(profile)
+						output += "\n" + entity.CreateProfile(profile)
 					})
 					m.cursor = 0
 					m.selectedItems = set.NewSet[int]()
@@ -141,20 +150,30 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				m = m.reloadProfilesToInstall()
 				return m, oscmd.OsCmdExecutedMsg([]string{}, output), ""
 			}
-
+		case m.view.isViewCreate():
+			newForm, cmd, outMsg := m.createProfileModule.UpdateProfileForm(msg)
+			m.createProfileModule = newForm
+			switch outMsg {
+			case create_profile.CreateProfileCreated:
+				m = m.reloadInstalledProfiles()
+				m.view = viewStateHome
+			case create_profile.CreateProfileEsc:
+				m.view = viewStateHome
+			}
+			return m, cmd, ""
 		}
 	}
 	return m, nil, ""
 }
 
 func (m ProfilesModule) reloadInstalledProfiles() ProfilesModule {
-	profiles, _ := LoadInstalledProfiles()
+	profiles, _ := entity.LoadInstalledProfiles()
 	m.installedProfiles = profiles
 	return m
 }
 
 func (m ProfilesModule) reloadProfilesToInstall() ProfilesModule {
-	m.profilesToInstall = InstallableProfiles()
+	m.profilesToInstall = entity.InstallableProfiles()
 	return m
 }
 
@@ -177,6 +196,8 @@ func (m ProfilesModule) ViewProfiles() string {
 				itemName = "List installed"
 			case menuInstallProfile:
 				itemName = "Install"
+			case menuCreateProfile:
+				itemName = "Create"
 			}
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, itemName))
 		}
@@ -213,6 +234,8 @@ func (m ProfilesModule) ViewProfiles() string {
 		output = strings.Join(lines, "\n")
 		output += "\n Press Space to select"
 		output += "\n Press Enter to delete"
+	case m.view.isViewCreate():
+		output = m.createProfileModule.ViewCreateProfile()
 	}
 
 	return output
