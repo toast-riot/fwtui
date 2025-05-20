@@ -9,6 +9,8 @@ import (
 	"github.com/samber/lo"
 )
 
+const profilesPath = "/etc/ufw/applications.d/"
+
 type UFWProfile struct {
 	Name        string
 	Title       string
@@ -20,7 +22,7 @@ type UFWProfile struct {
 func CreateProfile(p UFWProfile) string {
 	content := fmt.Sprintf("[%s]\ntitle=%s\ndescription=%s\nports=%s\n",
 		p.Name, p.Name, p.Title, strings.Join(p.Ports, "|"))
-	err := os.WriteFile("/etc/ufw/applications.d/"+p.Name+".profile", []byte(content), 0644)
+	err := os.WriteFile(profilesPath+p.Name+".profile", []byte(content), 0644)
 	if err != nil {
 		return fmt.Sprintf("Error creating profile: %s", err)
 	}
@@ -29,7 +31,7 @@ func CreateProfile(p UFWProfile) string {
 }
 
 func DeleteProfile(p UFWProfile) string {
-	err := os.Remove("/etc/ufw/applications.d/" + p.Name + ".profile")
+	err := os.Remove(profilesPath + p.Name + ".profile")
 	if err != nil {
 		return fmt.Sprintf("Error deleting profile: %s", err)
 	}
@@ -130,7 +132,7 @@ func InstallableProfiles() []UFWProfile {
 		{Name: "POP3S", Title: "POP3 over SSL", Ports: []string{"995/tcp"}, Installed: lo.Contains(installedProfileNames, "POP3S")},
 
 		// DNS
-		{Name: "DNS", Title: "Domain Name System", Ports: []string{"53/tcp", "53/udp"}, Installed: lo.Contains(installedProfileNames, "DNS")},
+		{Name: "DNS", Title: "Domain name System", Ports: []string{"53/tcp", "53/udp"}, Installed: lo.Contains(installedProfileNames, "DNS")},
 
 		// File sharing
 		{Name: "Samba", Title: "Windows file/printer sharing (Samba)", Ports: []string{"137,138/udp", "139,445/tcp"}, Installed: lo.Contains(installedProfileNames, "Samba")},
