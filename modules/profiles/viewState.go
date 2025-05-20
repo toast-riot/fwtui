@@ -7,7 +7,7 @@ func (v viewState) isViewHome() bool {
 }
 
 func (v viewState) isViewList() bool {
-	return v == viewStateInstalledProfilesList
+	return v == viewStateProfilesList
 }
 
 func (v viewState) isViewInstall() bool {
@@ -20,6 +20,6 @@ func (v viewState) isViewCreate() bool {
 
 const viewStateHome = "home"
 
-const viewStateInstalledProfilesList = "installed_profiles_list"
+const viewStateProfilesList = "installed_profiles_list"
 const viewStateInstallProfile = "install_profile"
 const viewStateCreateProfile = "create_profile"

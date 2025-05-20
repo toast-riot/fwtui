@@ -6,7 +6,8 @@ import (
 	"fwtui/modules/create_profile"
 	"fwtui/modules/shared/confirmation"
 	oscmd "fwtui/utils/cmd"
-	"fwtui/utils/set"
+	"fwtui/utils/multiselect_list"
+	"fwtui/utils/selectable_list"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,18 +16,15 @@ import (
 
 // MODEl
 
-var profileHomeActions = []string{menuInstalledProfiles, menuInstallProfile, menuCreateProfile}
-
-const menuInstalledProfiles = "INSTALLED_PROFILES"
+const menuListProfiles = "INSTALLED_PROFILES"
 const menuInstallProfile = "INSTALL_PROFILE"
 const menuCreateProfile = "CREATE_PROFILE"
 
 type ProfilesModule struct {
 	view              viewState
-	cursor            int
-	installedProfiles []entity.UFWProfile
-	profilesToInstall []entity.UFWProfile
-	selectedItems     set.Set[int]
+	menu              *selectable_list.SelectableList[string]
+	installedProfiles multiselect_list.MultiSelectableList[entity.UFWProfile]
+	profilesToInstall multiselect_list.MultiSelectableList[entity.UFWProfile]
 
 	deleteDialog        *confirmation.ConfirmDialog
 	createProfileModule create_profile.ProfileForm
@@ -34,8 +32,8 @@ type ProfilesModule struct {
 
 func Init() (ProfilesModule, tea.Cmd) {
 	model := ProfilesModule{
-		view:          viewStateHome,
-		selectedItems: set.NewSet[int](),
+		menu: selectable_list.NewSelectableList([]string{menuListProfiles, menuInstallProfile, menuCreateProfile}),
+		view: viewStateHome,
 	}
 	model = model.reloadInstalledProfiles()
 	model = model.reloadProfilesToInstall()
@@ -58,27 +56,24 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			key := msg.String()
 			switch key {
 			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
+				m.menu.Prev()
 			case "down", "j":
-				if m.cursor < len(profileHomeActions)-1 {
-					m.cursor++
-				}
+				m.menu.Next()
 			case "esc":
 				return m, nil, ProfilesOutMsgEsc
 			case "enter":
-				switch profileHomeActions[m.cursor] {
-				case menuInstalledProfiles:
-					m.view = viewStateInstalledProfilesList
-					m.cursor = 0
+				switch m.menu.Selected() {
+				case menuListProfiles:
+					m.view = viewStateProfilesList
+					m.installedProfiles.ClearSelection()
+					m.installedProfiles.FocusFirst()
 				case menuInstallProfile:
 					m.view = viewStateInstallProfile
-					m.cursor = 0
+					m.profilesToInstall.ClearSelection()
+					m.profilesToInstall.FocusFirst()
 				case menuCreateProfile:
 					m.view = viewStateCreateProfile
 					m.createProfileModule = create_profile.NewProfileForm()
-					m.cursor = 0
 				}
 			}
 		}
@@ -89,9 +84,9 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			switch outMsg {
 			case confirmation.ConfirmationDialogYes:
 				m.deleteDialog = nil
-				profile := m.installedProfiles[m.cursor]
-				entity.DeleteProfile(profile)
+				entity.DeleteProfile(m.installedProfiles.FocusedItem())
 				m = m.reloadInstalledProfiles()
+				m = m.reloadProfilesToInstall()
 			case confirmation.ConfirmationDialogNo:
 				m.deleteDialog = nil
 			case confirmation.ConfirmationDialogEsc:
@@ -106,38 +101,30 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			key := msg.String()
 			switch key {
 			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
+				m.installedProfiles.Prev()
 			case "down", "j":
-				if m.cursor < len(m.installedProfiles)-1 {
-					m.cursor++
-				}
+				m.installedProfiles.Next()
 			case "delete", "d":
 				m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this profile?")
 
 			case "esc":
 				m.view = viewStateHome
-				m.cursor = 0
-				m.selectedItems = set.NewSet[int]()
+				m.menu.FocusFirst()
 			case " ":
-				m.selectedItems = m.selectedItems.Toggle(m.cursor)
+				m.installedProfiles.Toggle()
 			case "enter":
 				var output string
 				var cmds []string
-				if m.selectedItems.IsEmpty() {
-					profile := m.installedProfiles[m.cursor]
+				if m.installedProfiles.NoneSelected() {
+					profile := m.installedProfiles.FocusedItem()
 					output = oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
 				} else {
-					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
-						profile := m.installedProfiles[i]
+					lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
 						command := fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name)
 						output += oscmd.RunCommand(command)()
 						cmds = append(cmds, command)
 
 					})
-					m.cursor = 0
-					m.selectedItems = set.NewSet[int]()
 				}
 				return m, oscmd.OsCmdExecutedMsg(cmds, output), ""
 			}
@@ -148,34 +135,23 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			key := msg.String()
 			switch key {
 			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
+				m.profilesToInstall.Prev()
 			case "down", "j":
-				if m.cursor < len(m.profilesToInstall)-1 {
-					m.cursor++
-				}
+				m.profilesToInstall.Next()
 			case "esc":
 				m.view = viewStateHome
-				m.cursor = 0
-				m.selectedItems = set.NewSet[int]()
 			case " ":
-				m.selectedItems = m.selectedItems.Toggle(m.cursor)
+				m.profilesToInstall.Toggle()
 			case "enter":
 				var output string
 
-				if m.selectedItems.IsEmpty() {
-					profile := m.profilesToInstall[m.cursor]
-					output = entity.CreateProfile(profile)
+				if m.profilesToInstall.NoneSelected() {
+					output = entity.CreateProfile(m.profilesToInstall.FocusedItem())
 				} else {
-					lo.ForEach(m.selectedItems.ToSlice(), func(i int, _ int) {
-						profile := m.profilesToInstall[i]
+					lo.ForEach(m.profilesToInstall.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
 						output += "\n" + entity.CreateProfile(profile)
 					})
-					m.cursor = 0
-					m.selectedItems = set.NewSet[int]()
 				}
-
 				m = m.reloadInstalledProfiles()
 				m = m.reloadProfilesToInstall()
 				return m, oscmd.OsCmdExecutedMsg([]string{}, output), ""
@@ -199,12 +175,12 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 
 func (m ProfilesModule) reloadInstalledProfiles() ProfilesModule {
 	profiles, _ := entity.LoadInstalledProfiles()
-	m.installedProfiles = profiles
+	m.installedProfiles = multiselect_list.NewMultiSelectableList(profiles)
 	return m
 }
 
 func (m ProfilesModule) reloadProfilesToInstall() ProfilesModule {
-	m.profilesToInstall = entity.InstallableProfiles()
+	m.profilesToInstall = multiselect_list.NewMultiSelectableList(entity.InstallableProfiles())
 	return m
 }
 
@@ -216,55 +192,45 @@ func (m ProfilesModule) ViewProfiles() string {
 	switch true {
 	case m.view.isViewHome():
 		lines := []string{"Select profile action:"}
-		for i, item := range profileHomeActions {
-			prefix := " "
-			if i == m.cursor {
-				prefix = ">"
-			}
+		m.menu.ForEach(func(item string, _ int, isSelected bool) {
+			prefix := lo.Ternary(isSelected, ">", " ")
 			var itemName string
+
 			switch item {
-			case menuInstalledProfiles:
-				itemName = "List installed"
+			case menuListProfiles:
+				itemName = "List"
 			case menuInstallProfile:
 				itemName = "Install"
 			case menuCreateProfile:
 				itemName = "Create"
 			}
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, itemName))
-		}
+		})
 		output = strings.Join(lines, "\n")
 	case m.view.isViewList():
 		if m.deleteDialog != nil {
 			return m.deleteDialog.ViewDialog()
 		}
 		lines := []string{"Select profile:"}
-		for i, profile := range m.installedProfiles {
-			prefix := "  "
-			if i == m.cursor && m.selectedItems.Has(i) {
-				prefix = ">*"
-			} else if i == m.cursor {
-				prefix = "> "
-			} else if m.selectedItems.Has(i) {
-				prefix = " *"
-			}
+		m.installedProfiles.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
+			focusedPrefix := lo.Ternary(isFocused, ">", " ")
+			selectedPrefix := lo.Ternary(isSelected, "*", " ")
+			prefix := focusedPrefix + selectedPrefix
 			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
-		}
+		})
+
 		output = strings.Join(lines, "\n")
 		output += "\n Press Space to select"
 		output += "\n Press Enter to allow"
 	case m.view.isViewInstall():
 		lines := []string{"Select profile to install:"}
-		for i, profile := range m.profilesToInstall {
-			prefix := "  "
-			if i == m.cursor && m.selectedItems.Has(i) {
-				prefix = ">*"
-			} else if i == m.cursor {
-				prefix = "> "
-			} else if m.selectedItems.Has(i) {
-				prefix = " *"
-			}
+		m.profilesToInstall.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
+			focusedPrefix := lo.Ternary(isFocused, ">", " ")
+			selectedPrefix := lo.Ternary(isSelected, "*", " ")
+			prefix := focusedPrefix + selectedPrefix
 			lines = append(lines, fmt.Sprintf("%s %-20s | %-45s | %-45s", prefix, profile.Name, profile.Title, strings.Join(profile.Ports, ", ")))
-		}
+		})
+
 		output = strings.Join(lines, "\n")
 		output += "\n Press Space to select"
 		output += "\n Press Enter to delete"

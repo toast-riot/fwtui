@@ -65,9 +65,11 @@ func (s *MultiSelectableList[T]) SetItems(items []T) {
 
 func (s *MultiSelectableList[T]) GetSelectedItems() []T {
 	selectedItems := make([]T, 0, len(s.Selected))
-	for i := range s.Selected.ToSlice() {
-		selectedItems = append(selectedItems, s.Items[i])
-	}
+	s.ForEach(func(item T, index int, isFocused, isSelected bool) {
+		if isSelected {
+			selectedItems = append(selectedItems, item)
+		}
+	})
 	return selectedItems
 }
 
