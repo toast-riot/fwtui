@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"fwtui/modules/create_rule"
-	_default "fwtui/modules/default"
+	"fwtui/modules/default_policies"
 	"fwtui/modules/profiles"
 	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/multiselect_list"
@@ -98,7 +98,7 @@ type model struct {
 
 	ruleForm          create_rule.RuleForm
 	profilesModule    profiles.ProfilesModule
-	setDefaultsModule _default.DefaultModule
+	setDefaultsModule default_policies.DefaultModule
 }
 
 func (m model) Init() tea.Cmd {
@@ -167,10 +167,10 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.view = viewStateDeleteRule
 				case menuSetDefault:
 					m.view = viewSetDefault
-					result := _default.ParseUfwDefaults(m.status)
+					result := default_policies.ParseUfwDefaults(m.status)
 
 					if result.IsOk() {
-						module := _default.Init(result.Unwrap())
+						module := default_policies.Init(result.Unwrap())
 						m.setDefaultsModule = module
 						return m, nil
 					} else {
@@ -243,7 +243,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newModule, cmd, outMsg := m.setDefaultsModule.UpdateDefaultsModule(msg)
 			m.setDefaultsModule = newModule
 			switch outMsg {
-			case _default.DefaultRuleEsc:
+			case default_policies.DefaultRuleEsc:
 				m.view = viewStateHome
 				m = m.reloadStatus()
 			}

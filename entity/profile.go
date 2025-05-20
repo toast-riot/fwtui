@@ -28,6 +28,15 @@ func CreateProfile(p UFWProfile) string {
 	return fmt.Sprintf("Profile %s created", p.Name)
 }
 
+func DeleteProfile(p UFWProfile) string {
+	err := os.Remove("/etc/ufw/applications.d/" + p.Name + ".profile")
+	if err != nil {
+		return fmt.Sprintf("Error deleting profile: %s", err)
+	}
+	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
+	return fmt.Sprintf("Profile %s deleted", p.Name)
+}
+
 func LoadInstalledProfiles() ([]UFWProfile, error) {
 
 	out := oscmd.RunCommand("sudo ufw app list")()

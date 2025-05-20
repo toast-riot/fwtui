@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"fwtui/entity"
 	"fwtui/modules/create_profile"
+	"fwtui/modules/shared/confirmation"
 	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/set"
 	"strings"
@@ -27,6 +28,7 @@ type ProfilesModule struct {
 	profilesToInstall []entity.UFWProfile
 	selectedItems     set.Set[int]
 
+	deleteDialog        *confirmation.ConfirmDialog
 	createProfileModule create_profile.ProfileForm
 }
 
@@ -48,12 +50,12 @@ const ProfilesOutMsgEsc ProfilesOutMsg = "ProfilesRuleEsc"
 
 func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea.Cmd, ProfilesOutMsg) {
 	m := mod
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		key := msg.String()
 
-		switch true {
-		case m.view.isViewHome():
+	switch true {
+	case m.view.isViewHome():
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			key := msg.String()
 			switch key {
 			case "up", "k":
 				if m.cursor > 0 {
@@ -79,7 +81,29 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 					m.cursor = 0
 				}
 			}
-		case m.view.isViewList():
+		}
+	case m.view.isViewList():
+		if m.deleteDialog != nil {
+			newDeleteDialog, _, outMsg := m.deleteDialog.UpdateDialog(msg)
+			m.deleteDialog = newDeleteDialog
+			switch outMsg {
+			case confirmation.ConfirmationDialogYes:
+				m.deleteDialog = nil
+				profile := m.installedProfiles[m.cursor]
+				entity.DeleteProfile(profile)
+				m = m.reloadInstalledProfiles()
+			case confirmation.ConfirmationDialogNo:
+				m.deleteDialog = nil
+			case confirmation.ConfirmationDialogEsc:
+				m.deleteDialog = nil
+			}
+
+			return m, nil, ""
+		}
+
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			key := msg.String()
 			switch key {
 			case "up", "k":
 				if m.cursor > 0 {
@@ -89,6 +113,9 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				if m.cursor < len(m.installedProfiles)-1 {
 					m.cursor++
 				}
+			case "delete", "d":
+				m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this profile?")
+
 			case "esc":
 				m.view = viewStateHome
 				m.cursor = 0
@@ -114,8 +141,11 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				}
 				return m, oscmd.OsCmdExecutedMsg(cmds, output), ""
 			}
-
-		case m.view.isViewInstall():
+		}
+	case m.view.isViewInstall():
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			key := msg.String()
 			switch key {
 			case "up", "k":
 				if m.cursor > 0 {
@@ -150,19 +180,20 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				m = m.reloadProfilesToInstall()
 				return m, oscmd.OsCmdExecutedMsg([]string{}, output), ""
 			}
-		case m.view.isViewCreate():
-			newForm, cmd, outMsg := m.createProfileModule.UpdateProfileForm(msg)
-			m.createProfileModule = newForm
-			switch outMsg {
-			case create_profile.CreateProfileCreated:
-				m = m.reloadInstalledProfiles()
-				m.view = viewStateHome
-			case create_profile.CreateProfileEsc:
-				m.view = viewStateHome
-			}
-			return m, cmd, ""
 		}
+	case m.view.isViewCreate():
+		newForm, cmd, outMsg := m.createProfileModule.UpdateProfileForm(msg)
+		m.createProfileModule = newForm
+		switch outMsg {
+		case create_profile.CreateProfileCreated:
+			m = m.reloadInstalledProfiles()
+			m.view = viewStateHome
+		case create_profile.CreateProfileEsc:
+			m.view = viewStateHome
+		}
+		return m, cmd, ""
 	}
+
 	return m, nil, ""
 }
 
@@ -203,6 +234,9 @@ func (m ProfilesModule) ViewProfiles() string {
 		}
 		output = strings.Join(lines, "\n")
 	case m.view.isViewList():
+		if m.deleteDialog != nil {
+			return m.deleteDialog.ViewDialog()
+		}
 		lines := []string{"Select profile:"}
 		for i, profile := range m.installedProfiles {
 			prefix := "  "
