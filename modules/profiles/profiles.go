@@ -117,11 +117,11 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				var cmds []string
 				if m.installedProfiles.NoneSelected() {
 					profile := m.installedProfiles.FocusedItem()
-					output = oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))()
+					output = oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name))
 				} else {
 					lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
 						command := fmt.Sprintf("sudo ufw allow \"%s\"", profile.Name)
-						output += oscmd.RunCommand(command)()
+						output += oscmd.RunCommand(command)
 						cmds = append(cmds, command)
 
 					})

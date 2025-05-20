@@ -108,7 +108,7 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			res := f.BuildUfwCommand()
 			if res.IsOk() {
 				cmd := fmt.Sprintf(res.Unwrap())
-				output := oscmd.RunCommand(cmd)()
+				output := oscmd.RunCommand(cmd)
 				return f, oscmd.OsCmdExecutedMsg(listext.Singleton(cmd), output), CreateRuleCreated
 			} else {
 				return f, oscmd.OsCmdExecutedMsg(nil, res.Err().Error()), ""

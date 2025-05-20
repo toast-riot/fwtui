@@ -24,7 +24,7 @@ func CreateProfile(p UFWProfile) string {
 	if err != nil {
 		return fmt.Sprintf("Error creating profile: %s", err)
 	}
-	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
+	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))
 	return fmt.Sprintf("Profile %s created", p.Name)
 }
 
@@ -33,13 +33,13 @@ func DeleteProfile(p UFWProfile) string {
 	if err != nil {
 		return fmt.Sprintf("Error deleting profile: %s", err)
 	}
-	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))()
+	oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", p.Name))
 	return fmt.Sprintf("Profile %s deleted", p.Name)
 }
 
 func LoadInstalledProfiles() ([]UFWProfile, error) {
 
-	out := oscmd.RunCommand("sudo ufw app list")()
+	out := oscmd.RunCommand("sudo ufw app list")
 
 	profileNames := strings.Split(strings.TrimSpace(out), "\n")[1:]
 
@@ -59,7 +59,7 @@ func LoadInstalledProfiles() ([]UFWProfile, error) {
 }
 
 func getUFWProfileInfo(name string) (UFWProfile, error) {
-	out := oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))()
+	out := oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))
 	lines := strings.Split(out, "\n")
 
 	profile := UFWProfile{

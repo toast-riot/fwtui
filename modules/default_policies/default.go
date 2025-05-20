@@ -83,11 +83,11 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 
 		case "enter":
 			cmd1 := fmt.Sprintf("sudo ufw default %s incoming", string(mod.actionIncoming.Selected()))
-			output1 := oscmd.RunCommand(cmd1)()
+			output1 := oscmd.RunCommand(cmd1)
 			cmd2 := fmt.Sprintf("sudo ufw default %s outgoing", string(mod.actionOutgoing.Selected()))
-			output2 := oscmd.RunCommand(cmd2)()
+			output2 := oscmd.RunCommand(cmd2)
 			cmd3 := fmt.Sprintf("sudo ufw default %s routed", string(mod.actionRouted.Selected()))
-			output3 := oscmd.RunCommand(cmd3)()
+			output3 := oscmd.RunCommand(cmd3)
 			return mod, oscmd.OsCmdExecutedMsg(
 				listext.Slice(cmd1, cmd2, cmd3),
 				strings.Join([]string{output1, output2, output3}, "\n"),
