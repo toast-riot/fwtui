@@ -1,10 +1,10 @@
-package default_policies
+package defaultpolicies
 
 import (
 	"fmt"
 	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
-	"fwtui/utils/selectable_list"
+	"fwtui/utils/focusablelist"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,19 +32,19 @@ const (
 var actions = []Action{ActionAllow, ActionDeny, ActionReject}
 
 type DefaultModule struct {
-	fields *selectable_list.SelectableList[Direction]
+	fields *focusablelist.SelectableList[Direction]
 
-	actionIncoming *selectable_list.SelectableList[Action]
-	actionOutgoing *selectable_list.SelectableList[Action]
-	actionRouted   *selectable_list.SelectableList[Action]
+	actionIncoming *focusablelist.SelectableList[Action]
+	actionOutgoing *focusablelist.SelectableList[Action]
+	actionRouted   *focusablelist.SelectableList[Action]
 }
 
 func Init(policies DefaultPolicies) DefaultModule {
 	return DefaultModule{
-		fields:         selectable_list.NewSelectableList(directions),
-		actionIncoming: selectable_list.NewSelectableList(actions).Select(Action(policies.Incoming)),
-		actionOutgoing: selectable_list.NewSelectableList(actions).Select(Action(policies.Outgoing)),
-		actionRouted:   selectable_list.NewSelectableList(actions).Select(Action(policies.Routed)),
+		fields:         focusablelist.FromList(directions),
+		actionIncoming: focusablelist.FromList(actions).Focus(Action(policies.Incoming)),
+		actionOutgoing: focusablelist.FromList(actions).Focus(Action(policies.Outgoing)),
+		actionRouted:   focusablelist.FromList(actions).Focus(Action(policies.Routed)),
 	}
 }
 
@@ -63,7 +63,7 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 		case "down":
 			mod.fields.Next()
 		case "left":
-			switch mod.fields.Selected() {
+			switch mod.fields.Focused() {
 			case DirectionIn:
 				mod.actionIncoming.Prev()
 			case DirectionOut:
@@ -72,7 +72,7 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 				mod.actionRouted.Prev()
 			}
 		case "right":
-			switch mod.fields.Selected() {
+			switch mod.fields.Focused() {
 			case DirectionIn:
 				mod.actionIncoming.Next()
 			case DirectionOut:
@@ -82,9 +82,9 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 			}
 
 		case "enter":
-			output1 := ufw.SetDefaultPolicy("incoming", string(mod.actionIncoming.Selected()))
-			output2 := ufw.SetDefaultPolicy("outgoing", string(mod.actionOutgoing.Selected()))
-			output3 := ufw.SetDefaultPolicy("routed", string(mod.actionRouted.Selected()))
+			output1 := ufw.SetDefaultPolicy("incoming", string(mod.actionIncoming.Focused()))
+			output2 := ufw.SetDefaultPolicy("outgoing", string(mod.actionOutgoing.Focused()))
+			output3 := ufw.SetDefaultPolicy("routed", string(mod.actionRouted.Focused()))
 			return mod, notification.CreateCmd(
 				strings.Join([]string{output1, output2, output3}, "\n"),
 			), ""
@@ -106,17 +106,17 @@ func (module DefaultModule) ViewSetDefaults() string {
 
 		switch field {
 		case DirectionIn:
-			value = string(module.actionIncoming.Selected())
+			value = string(module.actionIncoming.Focused())
 			fieldString = "Incoming"
 		case DirectionOut:
-			value = string(module.actionOutgoing.Selected())
+			value = string(module.actionOutgoing.Focused())
 			fieldString = "Outgoing"
 		case DirectionRouted:
-			value = string(module.actionRouted.Selected())
+			value = string(module.actionRouted.Focused())
 			fieldString = "Routed"
 		}
 
-		prefix := lo.Ternary(module.fields.Selected() == field, "> ", "  ")
+		prefix := lo.Ternary(module.fields.Focused() == field, "> ", "  ")
 		line := fmt.Sprintf("%s%s: %s", prefix, fieldString, value)
 		lines = append(lines, line)
 	}

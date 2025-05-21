@@ -1,14 +1,14 @@
-package create_profile
+package createprofile
 
 import (
 	"fmt"
 	"fwtui/domain/entity"
 	"fwtui/domain/notification"
+	"fwtui/utils/focusablelist"
 	stringsext "fwtui/utils/strings"
 	"strings"
 
 	"fwtui/utils/result"
-	"fwtui/utils/selectable_list"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -28,12 +28,12 @@ type ProfileForm struct {
 	title string
 	ports string
 
-	selectedField *selectable_list.SelectableList[ProfileField]
+	selectedField *focusablelist.SelectableList[ProfileField]
 }
 
 func NewProfileForm() ProfileForm {
 	return ProfileForm{
-		selectedField: selectable_list.NewSelectableList([]ProfileField{
+		selectedField: focusablelist.FromList([]ProfileField{
 			ProfileFormName,
 			ProfileFormTitle,
 			ProfileFormPorts,
@@ -58,7 +58,7 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 		case "down":
 			f.selectedField.Next()
 		case "backspace":
-			switch f.selectedField.Selected() {
+			switch f.selectedField.Focused() {
 			case ProfileFormName:
 				f.name = stringsext.TrimLastChar(f.name)
 			case ProfileFormTitle:
@@ -77,7 +77,7 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 		case "esc":
 			return f, nil, CreateProfileEsc
 		default:
-			switch f.selectedField.Selected() {
+			switch f.selectedField.Focused() {
 			case ProfileFormName:
 				f.name += key
 			case ProfileFormTitle:
@@ -112,7 +112,7 @@ func (f ProfileForm) ViewCreateProfile() string {
 		}
 
 		prefix := "  "
-		if f.selectedField.Selected() == field {
+		if f.selectedField.Focused() == field {
 			prefix = "> "
 		}
 		lines = append(lines, fmt.Sprintf("%s%s: %s", prefix, label, value))

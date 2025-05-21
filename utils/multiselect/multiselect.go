@@ -1,4 +1,4 @@
-package multiselect_list
+package multiselect
 
 import (
 	"fwtui/utils/set"
@@ -10,7 +10,7 @@ type MultiSelectableList[T any] struct {
 	Selected set.Set[int] // Set of selected item indices
 }
 
-func NewMultiSelectableList[T any](items []T) MultiSelectableList[T] {
+func FromList[T any](items []T) MultiSelectableList[T] {
 	return MultiSelectableList[T]{
 		Items:    items,
 		Focused:  0,

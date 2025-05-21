@@ -1,4 +1,4 @@
-package default_policies
+package defaultpolicies
 
 import (
 	"fmt"

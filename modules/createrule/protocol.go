@@ -1,4 +1,4 @@
-package create_rule
+package createrule
 
 type Protocol string
 

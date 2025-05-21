@@ -1,19 +1,19 @@
-package selectable_list
+package focusablelist
 
 type SelectableList[T comparable] struct {
 	Items   []T
 	Current int // index of selected item
 }
 
-// NewSelectableList creates a new selectable list, defaulting to the first item.
-func NewSelectableList[T comparable](items []T) *SelectableList[T] {
+// FromList creates a new selectable list, defaulting to the first item.
+func FromList[T comparable](items []T) *SelectableList[T] {
 	return &SelectableList[T]{
 		Items:   items,
 		Current: 0,
 	}
 }
 
-func (s *SelectableList[T]) Select(item T) *SelectableList[T] {
+func (s *SelectableList[T]) Focus(item T) *SelectableList[T] {
 	for i, v := range s.Items {
 		if v == item {
 			s.Current = i
@@ -39,8 +39,8 @@ func (s *SelectableList[T]) Prev() {
 	s.Current = (s.Current - 1 + len(s.Items)) % len(s.Items)
 }
 
-// Selected returns the currently selected item.
-func (s *SelectableList[T]) Selected() T {
+// Focused returns the currently selected item.
+func (s *SelectableList[T]) Focused() T {
 	return s.Items[s.Current]
 }
 

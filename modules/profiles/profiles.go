@@ -5,10 +5,10 @@ import (
 	"fwtui/domain/entity"
 	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
-	"fwtui/modules/create_profile"
+	"fwtui/modules/createprofile"
 	"fwtui/modules/shared/confirmation"
-	"fwtui/utils/multiselect_list"
-	"fwtui/utils/selectable_list"
+	"fwtui/utils/focusablelist"
+	"fwtui/utils/multiselect"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,17 +23,17 @@ const menuCreateProfile = "CREATE_PROFILE"
 
 type ProfilesModule struct {
 	view              viewState
-	menu              *selectable_list.SelectableList[string]
-	installedProfiles multiselect_list.MultiSelectableList[entity.UFWProfile]
-	profilesToInstall multiselect_list.MultiSelectableList[entity.UFWProfile]
+	menu              *focusablelist.SelectableList[string]
+	installedProfiles multiselect.MultiSelectableList[entity.UFWProfile]
+	profilesToInstall multiselect.MultiSelectableList[entity.UFWProfile]
 
 	deleteDialog        *confirmation.ConfirmDialog
-	createProfileModule create_profile.ProfileForm
+	createProfileModule createprofile.ProfileForm
 }
 
 func Init() (ProfilesModule, tea.Cmd) {
 	model := ProfilesModule{
-		menu: selectable_list.NewSelectableList([]string{menuListProfiles, menuInstallProfile, menuCreateProfile}),
+		menu: focusablelist.FromList([]string{menuListProfiles, menuInstallProfile, menuCreateProfile}),
 		view: viewStateHome,
 	}
 	model = model.reloadInstalledProfiles()
@@ -63,7 +63,7 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			case "esc":
 				return m, nil, ProfilesOutMsgEsc
 			case "enter":
-				switch m.menu.Selected() {
+				switch m.menu.Focused() {
 				case menuListProfiles:
 					m.view = viewStateProfilesList
 					m.installedProfiles.ClearSelection()
@@ -74,7 +74,7 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 					m.profilesToInstall.FocusFirst()
 				case menuCreateProfile:
 					m.view = viewStateCreateProfile
-					m.createProfileModule = create_profile.NewProfileForm()
+					m.createProfileModule = createprofile.NewProfileForm()
 				}
 			}
 		}
@@ -160,10 +160,10 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 		newForm, cmd, outMsg := m.createProfileModule.UpdateProfileForm(msg)
 		m.createProfileModule = newForm
 		switch outMsg {
-		case create_profile.CreateProfileCreated:
+		case createprofile.CreateProfileCreated:
 			m = m.reloadInstalledProfiles()
 			m.view = viewStateHome
-		case create_profile.CreateProfileEsc:
+		case createprofile.CreateProfileEsc:
 			m.view = viewStateHome
 		}
 		return m, cmd, ""
@@ -174,12 +174,12 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 
 func (m ProfilesModule) reloadInstalledProfiles() ProfilesModule {
 	profiles, _ := entity.LoadInstalledProfiles()
-	m.installedProfiles = multiselect_list.NewMultiSelectableList(profiles)
+	m.installedProfiles = multiselect.FromList(profiles)
 	return m
 }
 
 func (m ProfilesModule) reloadProfilesToInstall() ProfilesModule {
-	m.profilesToInstall = multiselect_list.NewMultiSelectableList(entity.InstallableProfiles())
+	m.profilesToInstall = multiselect.FromList(entity.InstallableProfiles())
 	return m
 }
 
@@ -190,7 +190,7 @@ func (m ProfilesModule) ViewProfiles() string {
 
 	switch true {
 	case m.view.isViewHome():
-		lines := []string{"Select profile action:"}
+		lines := []string{"Focus profile action:"}
 		m.menu.ForEach(func(item string, _ int, isSelected bool) {
 			prefix := lo.Ternary(isSelected, ">", " ")
 			var itemName string
@@ -210,7 +210,7 @@ func (m ProfilesModule) ViewProfiles() string {
 		if m.deleteDialog != nil {
 			return m.deleteDialog.ViewDialog()
 		}
-		lines := []string{"Select profile:"}
+		lines := []string{"Focus profile:"}
 		m.installedProfiles.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
 			focusedPrefix := lo.Ternary(isFocused, ">", " ")
 			selectedPrefix := lo.Ternary(isSelected, "*", " ")
@@ -222,7 +222,7 @@ func (m ProfilesModule) ViewProfiles() string {
 		output += "\n Press Space to select"
 		output += "\n Press Enter to allow"
 	case m.view.isViewInstall():
-		lines := []string{"Select profile to install:"}
+		lines := []string{"Focus profile to install:"}
 		m.profilesToInstall.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
 			focusedPrefix := lo.Ternary(isFocused, ">", " ")
 			selectedPrefix := lo.Ternary(isSelected, "*", " ")

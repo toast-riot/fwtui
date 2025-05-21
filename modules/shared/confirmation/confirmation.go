@@ -1,19 +1,19 @@
 package confirmation
 
 import (
-	"fwtui/utils/selectable_list"
+	"fwtui/utils/focusablelist"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type ConfirmDialog struct {
-	options *selectable_list.SelectableList[string]
+	options *focusablelist.SelectableList[string]
 	prompt  string
 }
 
 func NewConfirmDialog(prompt string) *ConfirmDialog {
 	return &ConfirmDialog{
-		options: selectable_list.NewSelectableList([]string{"Yes", "No"}),
+		options: focusablelist.FromList([]string{"Yes", "No"}),
 		prompt:  prompt,
 	}
 }
@@ -36,7 +36,7 @@ func (f *ConfirmDialog) UpdateDialog(msg tea.Msg) (*ConfirmDialog, tea.Cmd, Conf
 		case "down":
 			f.options.Next()
 		case "enter":
-			switch f.options.Selected() {
+			switch f.options.Focused() {
 			case "Yes":
 				return f, nil, ConfirmationDialogYes
 			case "No":

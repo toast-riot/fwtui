@@ -1,11 +1,11 @@
-package create_rule
+package createrule
 
 import (
 	"fmt"
 	"fwtui/domain/notification"
 	oscmd "fwtui/utils/cmd"
+	"fwtui/utils/focusablelist"
 	"fwtui/utils/result"
-	"fwtui/utils/selectable_list"
 	stringsext "fwtui/utils/strings"
 	"net"
 	"strconv"
@@ -32,22 +32,22 @@ const (
 
 type RuleForm struct {
 	port          string
-	protocol      *selectable_list.SelectableList[Protocol]
-	action        *selectable_list.SelectableList[Action]
-	dir           *selectable_list.SelectableList[Direction]
+	protocol      *focusablelist.SelectableList[Protocol]
+	action        *focusablelist.SelectableList[Action]
+	dir           *focusablelist.SelectableList[Direction]
 	comment       string
 	sourceIP      string
 	destinationIP string
 	interface_    string
-	selectedField *selectable_list.SelectableList[Field]
+	selectedField *focusablelist.SelectableList[Field]
 }
 
 func NewRuleForm() RuleForm {
 	return RuleForm{
-		protocol:      selectable_list.NewSelectableList(protocols),
-		action:        selectable_list.NewSelectableList(actions),
-		dir:           selectable_list.NewSelectableList(directions),
-		selectedField: selectable_list.NewSelectableList(fieldsForDirection(DirectionIn)),
+		protocol:      focusablelist.FromList(protocols),
+		action:        focusablelist.FromList(actions),
+		dir:           focusablelist.FromList(directions),
+		selectedField: focusablelist.FromList(fieldsForDirection(DirectionIn)),
 	}
 }
 
@@ -69,30 +69,30 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 		case "down":
 			form.selectedField.Next()
 		case "left":
-			switch form.selectedField.Selected() {
+			switch form.selectedField.Focused() {
 			case RuleFormProtocol:
 				form.protocol.Prev()
 			case RuleFormAction:
 				form.action.Prev()
 			case RuleFormDir:
 				form.dir.Prev()
-				form.selectedField.SetItems(fieldsForDirection(form.dir.Selected()))
+				form.selectedField.SetItems(fieldsForDirection(form.dir.Focused()))
 			}
 			return form, nil, ""
 		case "right":
-			switch form.selectedField.Selected() {
+			switch form.selectedField.Focused() {
 			case RuleFormProtocol:
 				form.protocol.Next()
 			case RuleFormAction:
 				form.action.Next()
 			case RuleFormDir:
 				form.dir.Next()
-				form.selectedField.SetItems(fieldsForDirection(form.dir.Selected()))
+				form.selectedField.SetItems(fieldsForDirection(form.dir.Focused()))
 			}
 			return form, nil, ""
 
 		case "backspace":
-			switch form.selectedField.Selected() {
+			switch form.selectedField.Focused() {
 			case RuleFormPort:
 				form.port = stringsext.TrimLastChar(form.port)
 			case RuleFormComment:
@@ -117,7 +117,7 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 		case "esc":
 			return form, nil, CreateRuleEsc
 		default:
-			switch form.selectedField.Selected() {
+			switch form.selectedField.Focused() {
 			case RuleFormPort:
 				form.port += key
 			case RuleFormComment:
@@ -167,13 +167,13 @@ func (f RuleForm) ViewCreateRule() string {
 			value = f.port
 			fieldString = "Port"
 		case RuleFormProtocol:
-			value = string(f.protocol.Selected())
+			value = string(f.protocol.Focused())
 			fieldString = "Protocol"
 		case RuleFormAction:
-			value = string(f.action.Selected())
+			value = string(f.action.Focused())
 			fieldString = "Action"
 		case RuleFormDir:
-			value = string(f.dir.Selected())
+			value = string(f.dir.Focused())
 			fieldString = "Direction"
 		case RuleFormComment:
 			value = f.comment
@@ -189,7 +189,7 @@ func (f RuleForm) ViewCreateRule() string {
 			fieldString = "Interface (Optional)"
 		}
 
-		prefix := lo.Ternary(f.selectedField.Selected() == field, "> ", "  ")
+		prefix := lo.Ternary(f.selectedField.Focused() == field, "> ", "  ")
 		line := fmt.Sprintf("%s%s: %s", prefix, fieldString, value)
 		lines = append(lines, line)
 	}
@@ -226,10 +226,10 @@ func (f RuleForm) BuildUfwCommand() result.Result[string] {
 	}
 
 	// Start building the command
-	parts := []string{"sudo", "ufw", string(f.action.Selected())}
+	parts := []string{"sudo", "ufw", string(f.action.Focused())}
 
 	// Direction-specific parts
-	switch f.dir.Selected() {
+	switch f.dir.Focused() {
 	case DirectionIn:
 		if f.interface_ != "" {
 			parts = append(parts, "in", "on", f.interface_)
@@ -263,10 +263,10 @@ func (f RuleForm) BuildUfwCommand() result.Result[string] {
 	}
 
 	// Port and protocol
-	if f.protocol.Selected() == ProtocolBoth {
+	if f.protocol.Focused() == ProtocolBoth {
 		parts = append(parts, "port", f.port)
 	} else {
-		parts = append(parts, "port", f.port, "proto", string(f.protocol.Selected()))
+		parts = append(parts, "port", f.port, "proto", string(f.protocol.Focused()))
 	}
 
 	// Comment (optional)

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
-	"fwtui/modules/create_rule"
-	"fwtui/modules/default_policies"
+	"fwtui/modules/createrule"
+	"fwtui/modules/defaultpolicies"
 	"fwtui/modules/profiles"
-	"fwtui/utils/multiselect_list"
-	"fwtui/utils/selectable_list"
+	"fwtui/utils/focusablelist"
+	"fwtui/utils/multiselect"
 	"os"
 	"sort"
 	"strings"
@@ -90,16 +90,16 @@ type rule struct {
 }
 
 type model struct {
-	menuList   *selectable_list.SelectableList[menuItem]
+	menuList   *focusablelist.SelectableList[menuItem]
 	view       viewHomeState
 	status     string
 	lastAction string
 
-	rules multiselect_list.MultiSelectableList[rule]
+	rules multiselect.MultiSelectableList[rule]
 
-	ruleForm          create_rule.RuleForm
+	ruleForm          createrule.RuleForm
 	profilesModule    profiles.ProfilesModule
-	setDefaultsModule default_policies.DefaultModule
+	setDefaultsModule defaultpolicies.DefaultModule
 }
 
 func (m model) Init() tea.Cmd {
@@ -139,7 +139,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "j":
 				m.menuList.Next()
 			case "enter":
-				selected := m.menuList.Selected().action
+				selected := m.menuList.Focused().action
 				switch selected {
 				case menuResetUFW:
 					ufw.Reset()
@@ -158,16 +158,16 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ufw.DisableLogging()
 					m = m.resetMenu()
 				case menuCreateRule:
-					m.ruleForm = create_rule.NewRuleForm()
+					m.ruleForm = createrule.NewRuleForm()
 					m.view = viewStateCreateRule
 				case menuDeleteRule:
 					m.view = viewStateDeleteRule
 				case menuSetDefault:
 					m.view = viewSetDefault
-					result := default_policies.ParseUfwDefaults(m.status)
+					result := defaultpolicies.ParseUfwDefaults(m.status)
 
 					if result.IsOk() {
-						module := default_policies.Init(result.Unwrap())
+						module := defaultpolicies.Init(result.Unwrap())
 						m.setDefaultsModule = module
 						return m, nil
 					} else {
@@ -186,11 +186,11 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newForm, cmd, outMsg := m.ruleForm.UpdateRuleForm(msg)
 			m.ruleForm = newForm
 			switch outMsg {
-			case create_rule.CreateRuleCreated:
+			case createrule.CreateRuleCreated:
 				m = m.reloadStatus()
 				m = m.reloadRules()
 				m.view = viewStateHome
-			case create_rule.CreateRuleEsc:
+			case createrule.CreateRuleEsc:
 				m.view = viewStateHome
 			}
 			return m, cmd
@@ -240,7 +240,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newModule, cmd, outMsg := m.setDefaultsModule.UpdateDefaultsModule(msg)
 			m.setDefaultsModule = newModule
 			switch outMsg {
-			case default_policies.DefaultRuleEsc:
+			case defaultpolicies.DefaultRuleEsc:
 				m.view = viewStateHome
 				m = m.reloadStatus()
 			}
@@ -281,7 +281,7 @@ func (m model) reloadRules() model {
 	return m
 }
 
-func buildMenu() *selectable_list.SelectableList[menuItem] {
+func buildMenu() *focusablelist.SelectableList[menuItem] {
 	enabled, loggingOn := getStatus()
 
 	items := []menuItem{}
@@ -309,7 +309,7 @@ func buildMenu() *selectable_list.SelectableList[menuItem] {
 		menuItem{"Quit", menuQuit},
 	)
 
-	return selectable_list.NewSelectableList(items)
+	return focusablelist.FromList(items)
 }
 
 func getStatus() (enabled bool, loggingOn bool) {
@@ -338,7 +338,7 @@ func (m model) View() string {
 	case m.view.isCreateRule():
 		output = m.ruleForm.ViewCreateRule()
 	case m.view.isDeleteRule():
-		lines := []string{"Select rule to delete:"}
+		lines := []string{"Focus rule to delete:"}
 		m.rules.ForEach(func(rule rule, index int, isFocused, isSelected bool) {
 			focusedPrefix := lo.Ternary(isFocused, ">", " ")
 			selectedPrefix := lo.Ternary(isSelected, "*", " ")
@@ -358,7 +358,7 @@ func (m model) View() string {
 	return output
 }
 
-func renderMenu(menu *selectable_list.SelectableList[menuItem]) []string {
+func renderMenu(menu *focusablelist.SelectableList[menuItem]) []string {
 	var lines []string
 	lines = append(lines, "", "UFW Firewall Menu:", "")
 	menu.ForEach(func(item menuItem, index int, isSelected bool) {
