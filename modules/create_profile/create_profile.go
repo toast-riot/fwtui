@@ -18,17 +18,15 @@ import (
 type ProfileField string
 
 const (
-	ProfileFormName        ProfileField = "name"
-	ProfileFormTitle       ProfileField = "Title"
-	ProfileFormDescription ProfileField = "Description"
-	ProfileFormPorts       ProfileField = "Ports"
+	ProfileFormName  ProfileField = "name"
+	ProfileFormTitle ProfileField = "Title"
+	ProfileFormPorts ProfileField = "Ports"
 )
 
 type ProfileForm struct {
-	name        string
-	title       string
-	description string
-	ports       string
+	name  string
+	title string
+	ports string
 
 	selectedField *selectable_list.SelectableList[ProfileField]
 }
@@ -38,7 +36,6 @@ func NewProfileForm() ProfileForm {
 		selectedField: selectable_list.NewSelectableList([]ProfileField{
 			ProfileFormName,
 			ProfileFormTitle,
-			ProfileFormDescription,
 			ProfileFormPorts,
 		}),
 	}
@@ -66,8 +63,6 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 				f.name = stringsext.TrimLastChar(f.name)
 			case ProfileFormTitle:
 				f.title = stringsext.TrimLastChar(f.title)
-			case ProfileFormDescription:
-				f.description = stringsext.TrimLastChar(f.description)
 			case ProfileFormPorts:
 				f.ports = stringsext.TrimLastChar(f.ports)
 			}
@@ -87,8 +82,7 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 				f.name += key
 			case ProfileFormTitle:
 				f.title += key
-			case ProfileFormDescription:
-				f.description += key
+
 			case ProfileFormPorts:
 				f.ports += key
 			}
@@ -112,9 +106,6 @@ func (f ProfileForm) ViewCreateProfile() string {
 		case ProfileFormTitle:
 			value = f.title
 			label = "Title"
-		case ProfileFormDescription:
-			value = f.description
-			label = "Description"
 		case ProfileFormPorts:
 			value = f.ports
 			label = "Ports"
@@ -140,9 +131,8 @@ func (f ProfileForm) BuildUfwProfile() result.Result[entity.UFWProfile] {
 		return result.Err[entity.UFWProfile](fmt.Errorf("Ports cannot be empty"))
 	}
 	return result.Ok(entity.UFWProfile{
-		Name:        strings.TrimSpace(f.name),
-		Title:       strings.TrimSpace(f.title),
-		Description: strings.TrimSpace(f.description),
-		Ports:       strings.Split(strings.TrimSpace(f.ports), "|"),
+		Name:  strings.TrimSpace(f.name),
+		Title: strings.TrimSpace(f.title),
+		Ports: strings.Split(strings.TrimSpace(f.ports), "|"),
 	})
 }

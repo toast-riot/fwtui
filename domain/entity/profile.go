@@ -12,11 +12,10 @@ import (
 const profilesPath = "/etc/ufw/applications.d/"
 
 type UFWProfile struct {
-	Name        string
-	Title       string
-	Description string
-	Ports       []string
-	Installed   bool
+	Name      string
+	Title     string
+	Ports     []string
+	Installed bool
 }
 
 func CreateProfile(p UFWProfile) string {
