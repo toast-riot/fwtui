@@ -100,15 +100,14 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			case RuleSourceIP:
 				form.sourceIP = stringsext.TrimLastChar(form.sourceIP)
 			case RuleDestinationIP:
-				form.destinationIP = stringsext.TrimLastChar(form.sourceIP)
+				form.destinationIP = stringsext.TrimLastChar(form.destinationIP)
 			case RuleInterface:
 				form.interface_ = stringsext.TrimLastChar(form.interface_)
 			}
 		case "enter":
 			res := f.BuildUfwCommand()
 			if res.IsOk() {
-				cmd := fmt.Sprintf(res.Unwrap())
-				output := oscmd.RunCommand(cmd)
+				output := oscmd.RunCommand(res.Unwrap())
 				return f, notification.CreateCmd(output), CreateRuleCreated
 			} else {
 				return f, notification.CreateCmd(res.Err().Error()), ""
