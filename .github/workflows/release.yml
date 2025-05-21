@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Linux binary
         run: |
-          make build-linux
+          make release-build
 
       - name: Upload release binary
         uses: softprops/action-gh-release@v2
