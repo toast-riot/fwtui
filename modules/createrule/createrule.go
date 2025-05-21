@@ -194,7 +194,7 @@ func (f RuleForm) ViewCreateRule() string {
 	}
 
 	output := strings.Join(lines, "\n")
-	output += "\n\n↑↓ to navigate, type to edit, Enter to submit, Esc to cancel"
+	output += "\n\n↑↓ to navigate, ←→ to change selection, type to edit, Enter to submit, Esc to cancel"
 	return output
 }
 

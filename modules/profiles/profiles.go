@@ -5,7 +5,7 @@ import (
 	"fwtui/domain/entity"
 	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
-	"fwtui/modules/createprofile"
+	"fwtui/modules/profiles/createprofile"
 	"fwtui/modules/shared/confirmation"
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
@@ -85,9 +85,16 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			switch outMsg {
 			case confirmation.ConfirmationDialogYes:
 				m.deleteDialog = nil
-				entity.DeleteProfile(m.installedProfiles.FocusedItem())
+				if m.installedProfiles.NoneSelected() {
+					entity.DeleteProfile(m.installedProfiles.FocusedItem())
+				} else {
+					lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
+						entity.DeleteProfile(profile)
+					})
+				}
 				m = m.reloadInstalledProfiles()
 				m = m.reloadProfilesToInstall()
+				m.installedProfiles.ClearSelection()
 			case confirmation.ConfirmationDialogNo:
 				m.deleteDialog = nil
 			case confirmation.ConfirmationDialogEsc:
@@ -106,8 +113,11 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			case "down", "j":
 				m.installedProfiles.Next()
 			case "delete", "d":
-				m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this profile?")
-
+				if m.installedProfiles.NoneSelected() {
+					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this profile?")
+				} else {
+					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete selected profiles?")
+				}
 			case "esc":
 				m.view = viewStateHome
 				m.menu.FocusFirst()
@@ -115,7 +125,6 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				m.installedProfiles.Toggle()
 			case "enter":
 				var output string
-
 				if m.installedProfiles.NoneSelected() {
 					profile := m.installedProfiles.FocusedItem()
 					output = ufw.AllowProfile(profile.Name)
@@ -219,8 +228,7 @@ func (m ProfilesModule) ViewProfiles() string {
 		})
 
 		output = strings.Join(lines, "\n")
-		output += "\n Press Space to select"
-		output += "\n Press Enter to allow"
+		output += "\n\n↑↓ to navigate, d to delete, Space to select, Enter to enable profile, Esc to cancel"
 	case m.view.isViewInstall():
 		lines := []string{"Focus profile to install:"}
 		m.profilesToInstall.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
@@ -231,8 +239,7 @@ func (m ProfilesModule) ViewProfiles() string {
 		})
 
 		output = strings.Join(lines, "\n")
-		output += "\n Press Space to select"
-		output += "\n Press Enter to delete"
+		output += "\n\n↑↓ to navigate, Space to select, Enter to create profile, Esc to cancel"
 	case m.view.isViewCreate():
 		output = m.createProfileModule.ViewCreateProfile()
 	}

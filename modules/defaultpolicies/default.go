@@ -122,6 +122,6 @@ func (module DefaultModule) ViewSetDefaults() string {
 	}
 
 	output := strings.Join(lines, "\n")
-	output += "\n\n↑↓ to navigate, type to edit, Enter to submit, Esc to cancel"
+	output += "\n\n↑↓ to navigate, ←→ to change selection, Enter to submit, Esc to cancel"
 	return output
 }

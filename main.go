@@ -201,7 +201,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rules.Prev()
 			case "down", "j":
 				m.rules.Next()
-			case "enter":
+			case "d":
 				if m.rules.NoneSelected() {
 					ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
 					m = m.reloadRules()
@@ -346,8 +346,7 @@ func (m model) View() string {
 			lines = append(lines, fmt.Sprintf("%s %s", prefix, rule.line))
 		})
 		output = strings.Join(lines, "\n")
-		output += "\n Press Space to select"
-		output += "\n Press Enter to delete"
+		output += "\n\n↑↓ to navigate, d to delete, Space to select, Esc to cancel"
 	case m.view.isProfiles():
 		output = m.profilesModule.ViewProfiles()
 	case m.view.isSetDefault():
