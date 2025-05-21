@@ -2,8 +2,8 @@ package default_policies
 
 import (
 	"fmt"
+	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
-	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/selectable_list"
 	"strings"
 
@@ -85,8 +85,7 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 			output1 := ufw.SetDefaultPolicy("incoming", string(mod.actionIncoming.Selected()))
 			output2 := ufw.SetDefaultPolicy("outgoing", string(mod.actionOutgoing.Selected()))
 			output3 := ufw.SetDefaultPolicy("routed", string(mod.actionRouted.Selected()))
-			return mod, oscmd.OsCmdExecutedMsg(
-				[]string{},
+			return mod, notification.CreateCmd(
 				strings.Join([]string{output1, output2, output3}, "\n"),
 			), ""
 

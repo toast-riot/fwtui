@@ -3,10 +3,10 @@ package profiles
 import (
 	"fmt"
 	"fwtui/domain/entity"
+	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
 	"fwtui/modules/create_profile"
 	"fwtui/modules/shared/confirmation"
-	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/multiselect_list"
 	"fwtui/utils/selectable_list"
 	"strings"
@@ -125,7 +125,7 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 
 					})
 				}
-				return m, oscmd.OsCmdExecutedMsg([]string{}, output), ""
+				return m, notification.CreateCmd(output), ""
 			}
 		}
 	case m.view.isViewInstall():
@@ -153,7 +153,7 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				}
 				m = m.reloadInstalledProfiles()
 				m = m.reloadProfilesToInstall()
-				return m, oscmd.OsCmdExecutedMsg([]string{}, output), ""
+				return m, notification.CreateCmd(output), ""
 			}
 		}
 	case m.view.isViewCreate():

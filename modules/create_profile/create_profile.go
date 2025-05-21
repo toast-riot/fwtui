@@ -3,7 +3,7 @@ package create_profile
 import (
 	"fmt"
 	"fwtui/domain/entity"
-	oscmd "fwtui/utils/cmd"
+	"fwtui/domain/notification"
 	stringsext "fwtui/utils/strings"
 	"strings"
 
@@ -75,10 +75,10 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 			res := f.BuildUfwProfile()
 			if res.IsOk() {
 				cmdOutput := entity.CreateProfile(res.Unwrap())
-				return f, oscmd.OsCmdExecutedMsg([]string{}, cmdOutput), CreateProfileCreated
+				return f, notification.CreateCmd(cmdOutput), CreateProfileCreated
 			}
 
-			return f, oscmd.OsCmdExecutedMsg([]string{}, res.Err().Error()), ""
+			return f, notification.CreateCmd(res.Err().Error()), ""
 		case "esc":
 			return f, nil, CreateProfileEsc
 		default:

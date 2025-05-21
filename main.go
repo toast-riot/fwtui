@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
 	"fwtui/modules/create_rule"
 	"fwtui/modules/default_policies"
 	"fwtui/modules/profiles"
-	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/multiselect_list"
 	"fwtui/utils/selectable_list"
 	"os"
@@ -116,13 +116,9 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case lastActionTimeUp:
 			m.lastAction = ""
 		}
-	case oscmd.CommandExecutedMsg:
-		lastAction := []string{"Executed commands:"}
-		lo.ForEach(msg.Cmds, func(cmd string, _ int) {
-			lastAction = append(lastAction, cmd)
-		})
-		lastAction = append(lastAction, "With output:")
-		lastAction = append(lastAction, msg.Output)
+	case notification.NotificationReceivedMsg:
+		lastAction := []string{}
+		lastAction = append(lastAction, msg.Text)
 		m.lastAction = strings.Join(lastAction, "\n")
 		return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
 			return lastActionTimeUp

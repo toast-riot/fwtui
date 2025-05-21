@@ -3,8 +3,6 @@ package oscmd
 import (
 	"fmt"
 	"os/exec"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func RunCommand(cmdStr string) string {
@@ -15,18 +13,4 @@ func RunCommand(cmdStr string) string {
 	}
 	return string(out)
 
-}
-
-type CommandExecutedMsg struct {
-	Cmds   []string
-	Output string
-}
-
-func OsCmdExecutedMsg(cmds []string, output string) tea.Cmd {
-	return func() tea.Msg {
-		return CommandExecutedMsg{
-			Cmds:   cmds,
-			Output: output,
-		}
-	}
 }

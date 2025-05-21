@@ -2,8 +2,8 @@ package create_rule
 
 import (
 	"fmt"
+	"fwtui/domain/notification"
 	oscmd "fwtui/utils/cmd"
-	"fwtui/utils/listext"
 	"fwtui/utils/result"
 	"fwtui/utils/selectable_list"
 	stringsext "fwtui/utils/strings"
@@ -109,9 +109,9 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			if res.IsOk() {
 				cmd := fmt.Sprintf(res.Unwrap())
 				output := oscmd.RunCommand(cmd)
-				return f, oscmd.OsCmdExecutedMsg(listext.Singleton(cmd), output), CreateRuleCreated
+				return f, notification.CreateCmd(output), CreateRuleCreated
 			} else {
-				return f, oscmd.OsCmdExecutedMsg(nil, res.Err().Error()), ""
+				return f, notification.CreateCmd(res.Err().Error()), ""
 
 			}
 		case "esc":
