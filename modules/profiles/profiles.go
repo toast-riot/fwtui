@@ -18,7 +18,7 @@ import (
 // MODEl
 
 const menuListProfiles = "INSTALLED_PROFILES"
-const menuInstallProfile = "INSTALL_PROFILE"
+const menuCreateFromList = "CREATE_PROFILE_FROM_LIST"
 const menuCreateProfile = "CREATE_PROFILE"
 
 type ProfilesModule struct {
@@ -33,7 +33,7 @@ type ProfilesModule struct {
 
 func Init() (ProfilesModule, tea.Cmd) {
 	model := ProfilesModule{
-		menu: focusablelist.FromList([]string{menuListProfiles, menuInstallProfile, menuCreateProfile}),
+		menu: focusablelist.FromList([]string{menuListProfiles, menuCreateFromList, menuCreateProfile}),
 		view: viewStateHome,
 	}
 	model = model.reloadInstalledProfiles()
@@ -68,8 +68,8 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 					m.view = viewStateProfilesList
 					m.installedProfiles.ClearSelection()
 					m.installedProfiles.FocusFirst()
-				case menuInstallProfile:
-					m.view = viewStateInstallProfile
+				case menuCreateFromList:
+					m.view = viewStateCreateProfileFromList
 					m.profilesToInstall.ClearSelection()
 					m.profilesToInstall.FocusFirst()
 				case menuCreateProfile:
@@ -137,7 +137,7 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				return m, notification.CreateCmd(output), ""
 			}
 		}
-	case m.view.isViewInstall():
+	case m.view.isViewCreateFromList():
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			key := msg.String()
@@ -207,8 +207,8 @@ func (m ProfilesModule) ViewProfiles() string {
 			switch item {
 			case menuListProfiles:
 				itemName = "List"
-			case menuInstallProfile:
-				itemName = "Install"
+			case menuCreateFromList:
+				itemName = "Create (from list)"
 			case menuCreateProfile:
 				itemName = "Create"
 			}
@@ -229,7 +229,7 @@ func (m ProfilesModule) ViewProfiles() string {
 
 		output = strings.Join(lines, "\n")
 		output += "\n\n↑↓ to navigate, d to delete, Space to select, Enter to enable profile, Esc to cancel"
-	case m.view.isViewInstall():
+	case m.view.isViewCreateFromList():
 		lines := []string{"Focus profile to install:"}
 		m.profilesToInstall.ForEach(func(profile entity.UFWProfile, index int, isFocused, isSelected bool) {
 			focusedPrefix := lo.Ternary(isFocused, ">", " ")
