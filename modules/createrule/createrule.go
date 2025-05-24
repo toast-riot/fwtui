@@ -223,6 +223,10 @@ func (f RuleForm) ViewCreateRule() string {
 func (f RuleForm) BuildUfwCommand() result.Result[string] {
 	// Validate port
 	if strings.Contains(f.port, ":") {
+		if f.protocol.Focused() == ProtocolBoth {
+			return result.Err[string](fmt.Errorf("invalid protocol for port range: %s. Must be either TCP or UDP only", f.port))
+		}
+
 		split := strings.Split(f.port, ":")
 
 		portNum1, err := strconv.Atoi(split[0])
@@ -292,7 +296,8 @@ func (f RuleForm) BuildUfwCommand() result.Result[string] {
 
 	// Comment (optional)
 	if f.comment != "" {
-		parts = append(parts, "comment", fmt.Sprintf("'%s'", f.comment))
+		sanitizedComment := strings.ReplaceAll(f.comment, `'`, `'\''`)
+		parts = append(parts, "comment", fmt.Sprintf("'%s'", sanitizedComment))
 	}
 
 	return result.Ok(strings.Join(parts, " "))

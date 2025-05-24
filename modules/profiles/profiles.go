@@ -154,10 +154,17 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 				var output string
 
 				if m.profilesToInstall.NoneSelected() {
-					output = entity.CreateProfile(m.profilesToInstall.FocusedItem())
+					res := entity.CreateProfile(m.profilesToInstall.FocusedItem())
+					if res.IsOk() {
+						output = res.Unwrap()
+					} else {
+						return m, notification.CreateCmd(res.Err().Error()), ""
+					}
+
 				} else {
 					lo.ForEach(m.profilesToInstall.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
-						output += "\n" + entity.CreateProfile(profile)
+						res := entity.CreateProfile(profile)
+						output += res.Unwrap()
 					})
 				}
 				m = m.reloadInstalledProfiles()

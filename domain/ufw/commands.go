@@ -40,7 +40,7 @@ func LoadProfile(name string) string {
 }
 
 func GetProfileInfo(name string) string {
-	return oscmd.RunCommand(fmt.Sprintf("sudo ufw app info %s", name))
+	return oscmd.RunCommand(fmt.Sprintf("sudo ufw app info \"%s\"", name))
 }
 
 func GetProfileList() string {

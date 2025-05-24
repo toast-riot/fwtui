@@ -3,6 +3,7 @@ package entity
 import (
 	"fmt"
 	"fwtui/domain/ufw"
+	"fwtui/utils/result"
 	"os"
 	"strings"
 
@@ -18,15 +19,20 @@ type UFWProfile struct {
 	Installed bool
 }
 
-func CreateProfile(p UFWProfile) string {
+func CreateProfile(p UFWProfile) result.Result[string] {
+	// check if file exists
+	if _, err := os.Stat(profilesPath + p.Name + ".profile"); !os.IsNotExist(err) {
+		return result.Err[string](fmt.Errorf("profile %s already exists", p.Name))
+	}
+
 	content := fmt.Sprintf("[%s]\ntitle=%s\ndescription=%s\nports=%s\n",
 		p.Name, p.Name, p.Title, strings.Join(p.Ports, "|"))
 	err := os.WriteFile(profilesPath+p.Name+".profile", []byte(content), 0644)
 	if err != nil {
-		return fmt.Sprintf("Error creating profile: %s", err)
+		return result.Err[string](fmt.Errorf("error creating profile: %s", err))
 	}
 	ufw.LoadProfile(p.Name)
-	return fmt.Sprintf("Profile %s created", p.Name)
+	return result.Ok(fmt.Sprintf("Profile %s created", p.Name))
 }
 
 func DeleteProfile(p UFWProfile) string {
