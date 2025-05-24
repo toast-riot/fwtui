@@ -24,7 +24,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := model{menuList: buildMenu(), view: viewStateHome}
+	profilesModule, _ := profiles.Init()
+	m := model{menuList: buildMenu(), view: viewStateHome, profilesModule: profilesModule}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
@@ -175,9 +176,6 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case menuProfiles:
 					m.view = viewStateProfiles
-					module, cmd := profiles.Init()
-					m.profilesModule = module
-					return m, cmd
 				case menuQuit:
 					return m, tea.Quit
 				}

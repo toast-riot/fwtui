@@ -38,15 +38,18 @@ type RuleForm struct {
 	comment       string
 	sourceIP      string
 	destinationIP string
-	interface_    string
+	interface_    *focusablelist.SelectableList[string]
 	selectedField *focusablelist.SelectableList[Field]
 }
 
 func NewRuleForm() RuleForm {
+	availableInterfaces, _ := GetActiveInterfaces()
+
 	return RuleForm{
 		protocol:      focusablelist.FromList(protocols),
 		action:        focusablelist.FromList(actions),
 		dir:           focusablelist.FromList(directions),
+		interface_:    focusablelist.FromList(availableInterfaces),
 		selectedField: focusablelist.FromList(fieldsForDirection(DirectionIn)),
 	}
 }
@@ -77,6 +80,8 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			case RuleFormDir:
 				form.dir.Prev()
 				form.selectedField.SetItems(fieldsForDirection(form.dir.Focused()))
+			case RuleInterface:
+				form.interface_.Prev()
 			}
 			return form, nil, ""
 		case "right":
@@ -88,6 +93,8 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			case RuleFormDir:
 				form.dir.Next()
 				form.selectedField.SetItems(fieldsForDirection(form.dir.Focused()))
+			case RuleInterface:
+				form.interface_.Next()
 			}
 			return form, nil, ""
 
@@ -101,8 +108,6 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 				form.sourceIP = stringsext.TrimLastChar(form.sourceIP)
 			case RuleDestinationIP:
 				form.destinationIP = stringsext.TrimLastChar(form.destinationIP)
-			case RuleInterface:
-				form.interface_ = stringsext.TrimLastChar(form.interface_)
 			}
 		case "enter":
 			res := f.BuildUfwCommand()
@@ -125,8 +130,6 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 				form.sourceIP += key
 			case RuleDestinationIP:
 				form.destinationIP += key
-			case RuleInterface:
-				form.interface_ += key
 			}
 		}
 	}
@@ -150,6 +153,25 @@ func fieldsForDirection(dir Direction) []Field {
 	default:
 		return baseFields // fallback in case of invalid input
 	}
+}
+
+func GetActiveInterfaces() ([]string, error) {
+	var result = []string{""}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		// Skip interfaces that are down or loopback
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		result = append(result, iface.Name)
+	}
+
+	return result, nil
 }
 
 // VIEW
@@ -184,7 +206,7 @@ func (f RuleForm) ViewCreateRule() string {
 			value = f.destinationIP
 			fieldString = "Destination IP (Optional)"
 		case RuleInterface:
-			value = f.interface_
+			value = f.interface_.Focused()
 			fieldString = "Interface (Optional)"
 		}
 
@@ -230,8 +252,8 @@ func (f RuleForm) BuildUfwCommand() result.Result[string] {
 	// Direction-specific parts
 	switch f.dir.Focused() {
 	case DirectionIn:
-		if f.interface_ != "" {
-			parts = append(parts, "in", "on", f.interface_)
+		if f.interface_.Focused() != "" {
+			parts = append(parts, "in", "on", f.interface_.Focused())
 		}
 
 		if f.sourceIP != "" {
