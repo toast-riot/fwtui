@@ -26,7 +26,7 @@ func main() {
 	}
 
 	profilesModule, _ := profiles.Init()
-	m := model{menuList: buildMenu(), view: viewStateHome, profilesModule: profilesModule}
+	m := model{menuList: focusablelist.FromList(buildMenu()), view: viewStateHome, profilesModule: profilesModule}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
@@ -92,10 +92,11 @@ type rule struct {
 }
 
 type model struct {
-	menuList   *focusablelist.SelectableList[menuItem]
-	view       viewHomeState
-	status     string
-	lastAction string
+	menuList    *focusablelist.SelectableList[menuItem]
+	resetDialog *confirmation.ConfirmDialog
+	view        viewHomeState
+	status      string
+	lastAction  string
 
 	rules        multiselect.MultiSelectableList[rule]
 	deleteDialog *confirmation.ConfirmDialog
@@ -136,6 +137,25 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch true {
 		case m.view.isHome():
+			if m.resetDialog != nil {
+				newDeleteDialog, _, outMsg := m.resetDialog.UpdateDialog(msg)
+				m.resetDialog = newDeleteDialog
+				switch outMsg {
+				case confirmation.ConfirmationDialogYes:
+					output := ufw.Reset()
+					m = m.resetMenu()
+					m = m.reloadStatus()
+					m = m.reloadRules()
+					return m.setLastAction(output)
+				case confirmation.ConfirmationDialogNo:
+					m.resetDialog = nil
+				case confirmation.ConfirmationDialogEsc:
+					m.resetDialog = nil
+				}
+
+				return m, nil
+			}
+
 			switch key {
 			case "up", "k":
 				m.menuList.Prev()
@@ -145,8 +165,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selected := m.menuList.Focused().action
 				switch selected {
 				case menuResetUFW:
-					ufw.Reset()
-					m = m.resetMenu()
+					m.resetDialog = confirmation.NewConfirmDialog("Are you sure you want to reset UFW?")
 				case menuDisableUFW:
 					ufw.Disable()
 					m = m.resetMenu()
@@ -277,7 +296,7 @@ func (m model) setLastAction(msg string) (model, tea.Cmd) {
 }
 
 func (m model) resetMenu() model {
-	m.menuList = buildMenu()
+	m.menuList.SetItems(buildMenu())
 	m = m.reloadStatus()
 	return m
 }
@@ -300,7 +319,7 @@ func (m model) reloadRules() model {
 	return m
 }
 
-func buildMenu() *focusablelist.SelectableList[menuItem] {
+func buildMenu() []menuItem {
 	enabled, loggingOn := getStatus()
 
 	items := []menuItem{}
@@ -328,7 +347,7 @@ func buildMenu() *focusablelist.SelectableList[menuItem] {
 		menuItem{"Quit", menuQuit},
 	)
 
-	return focusablelist.FromList(items)
+	return items
 }
 
 func getStatus() (enabled bool, loggingOn bool) {
@@ -351,6 +370,9 @@ func (m model) View() string {
 
 	switch true {
 	case m.view.isHome():
+		if m.resetDialog != nil {
+			return m.resetDialog.ViewDialog()
+		}
 		left := renderMenu(m.menuList)
 		right := strings.Split(m.status, "\n")
 		output = renderTwoColumns(left, right)

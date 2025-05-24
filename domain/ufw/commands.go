@@ -14,7 +14,7 @@ func StatusNumbered() string {
 }
 
 func Reset() string {
-	return oscmd.RunCommand("sudo ufw reset")
+	return oscmd.RunCommand("yes | sudo ufw reset")
 }
 
 func Enable() string {
