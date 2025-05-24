@@ -7,6 +7,7 @@ import (
 	"fwtui/modules/createrule"
 	"fwtui/modules/defaultpolicies"
 	"fwtui/modules/profiles"
+	"fwtui/modules/shared/confirmation"
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
 	"os"
@@ -96,7 +97,8 @@ type model struct {
 	status     string
 	lastAction string
 
-	rules multiselect.MultiSelectableList[rule]
+	rules        multiselect.MultiSelectableList[rule]
+	deleteDialog *confirmation.ConfirmDialog
 
 	ruleForm          createrule.RuleForm
 	profilesModule    profiles.ProfilesModule
@@ -194,6 +196,36 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 
 		case m.view.isDeleteRule():
+			if m.deleteDialog != nil {
+				newDeleteDialog, _, outMsg := m.deleteDialog.UpdateDialog(msg)
+				m.deleteDialog = newDeleteDialog
+				switch outMsg {
+				case confirmation.ConfirmationDialogYes:
+					m.deleteDialog = nil
+					if m.rules.NoneSelected() {
+						ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
+					} else {
+						// we have to reverse otherwise the position of the next element for deletion changes
+						selectedSlice := m.rules.GetSelectedIndexes()
+						sort.Slice(selectedSlice, func(i, j int) bool {
+							return selectedSlice[i] > selectedSlice[j]
+						})
+
+						lo.ForEach(selectedSlice, func(i int, _ int) {
+							ufw.DeleteRuleByNumber(i + 1)
+						})
+						m.rules.FocusFirst()
+					}
+					m = m.reloadRules()
+				case confirmation.ConfirmationDialogNo:
+					m.deleteDialog = nil
+				case confirmation.ConfirmationDialogEsc:
+					m.deleteDialog = nil
+				}
+
+				return m, nil
+			}
+
 			switch key {
 			case "up", "k":
 				m.rules.Prev()
@@ -201,20 +233,9 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rules.Next()
 			case "d":
 				if m.rules.NoneSelected() {
-					ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
-					m = m.reloadRules()
+					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this rule?")
 				} else {
-					// we have to reverse otherwise the position of the next element for deletion changes
-					selectedSlice := m.rules.GetSelectedIndexes()
-					sort.Slice(selectedSlice, func(i, j int) bool {
-						return selectedSlice[i] > selectedSlice[j]
-					})
-
-					lo.ForEach(selectedSlice, func(i int, _ int) {
-						ufw.DeleteRuleByNumber(i + 1)
-					})
-					m = m.reloadRules()
-					m.rules.FocusFirst()
+					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete selected rules?")
 				}
 
 			case "esc":
@@ -336,6 +357,9 @@ func (m model) View() string {
 	case m.view.isCreateRule():
 		output = m.ruleForm.ViewCreateRule()
 	case m.view.isDeleteRule():
+		if m.deleteDialog != nil {
+			return m.deleteDialog.ViewDialog()
+		}
 		lines := []string{"Focus rule to delete:"}
 		m.rules.ForEach(func(rule rule, index int, isFocused, isSelected bool) {
 			focusedPrefix := lo.Ternary(isFocused, ">", " ")
