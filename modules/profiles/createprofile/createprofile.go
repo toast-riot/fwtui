@@ -69,15 +69,16 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 			}
 		case "enter":
 			res := f.BuildUfwProfile()
-			if res.IsOk() {
-				createProfileRes := entity.CreateProfile(res.Unwrap())
-				if createProfileRes.IsErr() {
-					return f, notification.CreateCmd(createProfileRes.Err().Error()), ""
-				}
-				return f, notification.CreateCmd(createProfileRes.Unwrap()), CreateProfileCreated
+			if res.IsErr() {
+				return f, notification.CreateCmd(res.Err().Error()), ""
 			}
 
-			return f, notification.CreateCmd(res.Err().Error()), ""
+			createProfileRes := entity.CreateProfile(res.Value())
+			if createProfileRes.IsErr() {
+				return f, notification.CreateCmd(createProfileRes.Err().Error()), ""
+			}
+			return f, notification.CreateCmd(createProfileRes.Value()), CreateProfileCreated
+
 		case "esc":
 			return f, nil, CreateProfileEsc
 		default:

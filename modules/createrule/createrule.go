@@ -111,13 +111,11 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			}
 		case "enter":
 			res := f.BuildUfwCommand()
-			if res.IsOk() {
-				output := oscmd.RunCommand(res.Unwrap())
-				return f, notification.CreateCmd(output), CreateRuleCreated
-			} else {
+			if res.IsErr() {
 				return f, notification.CreateCmd(res.Err().Error()), ""
-
 			}
+			output := oscmd.RunCommand(res.Value())
+			return f, notification.CreateCmd(output), CreateRuleCreated
 		case "esc":
 			return form, nil, CreateRuleEsc
 		default:

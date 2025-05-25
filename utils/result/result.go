@@ -21,14 +21,14 @@ func (r Result[T]) IsErr() bool {
 	return r.err != nil
 }
 
-func (r Result[T]) Unwrap() T {
+func (r Result[T]) Value() T {
 	if r.IsErr() {
-		panic("called Unwrap on an Err value")
+		panic("called Value on an Err value")
 	}
 	return *r.ok
 }
 
-func (r Result[T]) UnwrapOr(defaultVal T) T {
+func (r Result[T]) WithDefault(defaultVal T) T {
 	if r.IsErr() {
 		return defaultVal
 	}

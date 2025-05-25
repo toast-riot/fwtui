@@ -92,11 +92,11 @@ type rule struct {
 }
 
 type model struct {
-	menuList    *focusablelist.SelectableList[menuItem]
-	resetDialog *confirmation.ConfirmDialog
-	view        viewHomeState
-	status      string
-	lastAction  string
+	menuList     *focusablelist.SelectableList[menuItem]
+	resetDialog  *confirmation.ConfirmDialog
+	view         viewHomeState
+	status       string
+	notification string
 
 	rules        multiselect.MultiSelectableList[rule]
 	deleteDialog *confirmation.ConfirmDialog
@@ -118,12 +118,12 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case string:
 		switch msg {
 		case lastActionTimeUp:
-			m.lastAction = ""
+			m.notification = ""
 		}
 	case notification.NotificationReceivedMsg:
 		lastAction := []string{}
 		lastAction = append(lastAction, msg.Text)
-		m.lastAction = strings.Join(lastAction, "\n")
+		m.notification = strings.Join(lastAction, "\n")
 		return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
 			return lastActionTimeUp
 		})
@@ -146,7 +146,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m = m.resetMenu()
 					m = m.reloadStatus()
 					m = m.reloadRules()
-					return m.setLastAction(output)
+					return m.setNotification(output)
 				case confirmation.ConfirmationDialogNo:
 					m.resetDialog = nil
 				case confirmation.ConfirmationDialogEsc:
@@ -188,13 +188,12 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.view = viewSetDefault
 					result := defaultpolicies.ParseUfwDefaults(m.status)
 
-					if result.IsOk() {
-						module := defaultpolicies.Init(result.Unwrap())
-						m.setDefaultsModule = module
-						return m, nil
-					} else {
-						return m.setLastAction(result.Err().Error())
+					if result.IsErr() {
+						return m.setNotification(result.Err().Error())
 					}
+
+					m.setDefaultsModule = defaultpolicies.Init(result.Value())
+					return m, nil
 				case menuProfiles:
 					m.view = viewStateProfiles
 				case menuQuit:
@@ -288,8 +287,8 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) setLastAction(msg string) (model, tea.Cmd) {
-	m.lastAction = msg
+func (m model) setNotification(msg string) (model, tea.Cmd) {
+	m.notification = msg
 	return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
 		return lastActionTimeUp
 	})
@@ -397,7 +396,7 @@ func (m model) View() string {
 		output = m.setDefaultsModule.ViewSetDefaults()
 	}
 
-	output += "\n" + m.lastAction
+	output += "\n" + m.notification
 	return output
 }
 
