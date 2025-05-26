@@ -10,6 +10,7 @@ import (
 	"fwtui/modules/shared/confirmation"
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
+	"fwtui/utils/teacmd"
 	"os"
 	"sort"
 	"strings"
@@ -30,7 +31,8 @@ func main() {
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
-	if err := p.Start(); err != nil {
+	_, err := p.Run()
+	if err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
@@ -83,20 +85,19 @@ const menuEnableLogging = "ENABLE_LOGGING"
 const menuSetDefault = "SET_DEFAULT"
 const menuProfiles = "PROFILES"
 
-// EVENT
-const lastActionTimeUp = "LAST_ACTION_TIME_UP"
-
 type rule struct {
 	number int
 	line   string
 }
 
 type model struct {
-	menuList     *focusablelist.SelectableList[menuItem]
-	resetDialog  *confirmation.ConfirmDialog
-	view         viewHomeState
-	status       string
-	notification string
+	menuList             *focusablelist.SelectableList[menuItem]
+	resetDialog          *confirmation.ConfirmDialog
+	view                 viewHomeState
+	status               string
+	notification         string
+	runningNotifications int
+	cmdIsRunning         bool
 
 	rules        multiselect.MultiSelectableList[rule]
 	deleteDialog *confirmation.ConfirmDialog
@@ -112,29 +113,44 @@ func (m model) Init() tea.Cmd {
 
 // UPDATE
 
+type lastActionTimeUpMsg struct{}
+type rulesDeletedMsg struct{ Output string }
+
 func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m := mod
-	switch msg := msg.(type) {
-	case string:
-		switch msg {
-		case lastActionTimeUp:
-			m.notification = ""
-		}
-	case notification.NotificationReceivedMsg:
-		lastAction := []string{}
-		lastAction = append(lastAction, msg.Text)
-		m.notification = strings.Join(lastAction, "\n")
-		return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
-			return lastActionTimeUp
-		})
 
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
 		switch key {
 		case "ctrl+c", "ctrl+d", "ctrl+q":
 			return m, tea.Quit
 		}
+	}
 
+	switch msg := msg.(type) {
+	case lastActionTimeUpMsg:
+		m.runningNotifications--
+		if m.runningNotifications == 0 {
+			m.notification = ""
+		}
+
+		return m, nil
+
+	case teacmd.CommandExecutionStartedMsg:
+		m.cmdIsRunning = true
+		return m, nil
+
+	case teacmd.CommandExecutionFinishedMsg:
+		m.cmdIsRunning = false
+		return m.setNotification(msg.Output)
+
+	case notification.NotificationReceivedMsg:
+		var lastAction []string
+		lastAction = append(lastAction, msg.Text)
+		return m.setNotification(strings.Join(lastAction, "\n"))
+
+	default:
 		switch true {
 		case m.view.isHome():
 			if m.resetDialog != nil {
@@ -156,61 +172,68 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			switch key {
-			case "up", "k":
-				m.menuList.Prev()
-			case "down", "j":
-				m.menuList.Next()
-			case "enter":
-				selected := m.menuList.Focused().action
-				switch selected {
-				case menuResetUFW:
-					m.resetDialog = confirmation.NewConfirmDialog("Are you sure you want to reset UFW?")
-				case menuDisableUFW:
-					ufw.Disable()
-					m = m.resetMenu()
-					m.menuList.FocusFirst()
-				case menuEnableUFW:
-					ufw.Enable()
-					m = m.resetMenu()
-				case menuEnableLogging:
-					ufw.EnableLogging()
-					m = m.resetMenu()
-				case menuDisableLogging:
-					ufw.DisableLogging()
-					m = m.resetMenu()
-				case menuCreateRule:
-					m.ruleForm = createrule.NewRuleForm()
-					m.view = viewStateCreateRule
-				case menuDeleteRule:
-					m.view = viewStateDeleteRule
-				case menuSetDefault:
-					m.view = viewSetDefault
-					result := defaultpolicies.ParseUfwDefaults(m.status)
+			switch msg := msg.(type) {
+			case tea.KeyMsg:
+				key := msg.String()
+				switch key {
+				case "up", "k":
+					m.menuList.Prev()
+				case "down", "j":
+					m.menuList.Next()
+				case "enter":
+					selected := m.menuList.Focused().action
+					switch selected {
+					case menuResetUFW:
+						m.resetDialog = confirmation.NewConfirmDialog("Are you sure you want to reset UFW?")
+					case menuDisableUFW:
+						ufw.Disable()
+						m = m.resetMenu()
+						m.menuList.FocusFirst()
+					case menuEnableUFW:
+						ufw.Enable()
+						m = m.resetMenu()
+					case menuEnableLogging:
+						ufw.EnableLogging()
+						m = m.resetMenu()
+					case menuDisableLogging:
+						ufw.DisableLogging()
+						m = m.resetMenu()
+					case menuCreateRule:
+						m.ruleForm = createrule.NewRuleForm()
+						m.view = viewStateCreateRule
+					case menuDeleteRule:
+						m.view = viewStateDeleteRule
+					case menuSetDefault:
+						m.view = viewSetDefault
+						result := defaultpolicies.ParseUfwDefaults(m.status)
 
-					if result.IsErr() {
-						return m.setNotification(result.Err().Error())
+						if result.IsErr() {
+							return m.setNotification(result.Err().Error())
+						}
+
+						m.setDefaultsModule = defaultpolicies.Init(result.Value())
+						return m, nil
+					case menuProfiles:
+						m.view = viewStateProfiles
+					case menuQuit:
+						return m, tea.Quit
 					}
-
-					m.setDefaultsModule = defaultpolicies.Init(result.Value())
-					return m, nil
-				case menuProfiles:
-					m.view = viewStateProfiles
-				case menuQuit:
-					return m, tea.Quit
 				}
 			}
 		case m.view.isCreateRule():
-			newForm, cmd, outMsg := m.ruleForm.UpdateRuleForm(msg)
-			m.ruleForm = newForm
-			switch outMsg {
-			case createrule.CreateRuleCreated:
+			switch msg.(type) {
+			case createrule.CreateRuleCreatedMsg:
 				m = m.reloadStatus()
 				m = m.reloadRules()
 				m.view = viewStateHome
-			case createrule.CreateRuleEsc:
+				return m, nil
+			case createrule.CreateRuleEscMsg:
 				m.view = viewStateHome
+				return m, nil
 			}
+
+			newForm, cmd := m.ruleForm.UpdateRuleForm(msg)
+			m.ruleForm = newForm
 			return m, cmd
 
 		case m.view.isDeleteRule():
@@ -220,21 +243,28 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch outMsg {
 				case confirmation.ConfirmationDialogYes:
 					m.deleteDialog = nil
-					if m.rules.NoneSelected() {
-						ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
-					} else {
-						// we have to reverse otherwise the position of the next element for deletion changes
-						selectedSlice := m.rules.GetSelectedIndexes()
-						sort.Slice(selectedSlice, func(i, j int) bool {
-							return selectedSlice[i] > selectedSlice[j]
-						})
 
-						lo.ForEach(selectedSlice, func(i int, _ int) {
-							ufw.DeleteRuleByNumber(i + 1)
-						})
-						m.rules.FocusFirst()
-					}
-					m = m.reloadRules()
+					return m, teacmd.RunOsCmdAndAfter(func() string {
+						if m.rules.NoneSelected() {
+							return ufw.DeleteRuleByNumber(m.rules.FocusedIndex() + 1)
+						} else {
+							var output string
+							// we have to reverse otherwise the position of the next element for deletion changes
+							selectedSlice := m.rules.GetSelectedIndexes()
+							sort.Slice(selectedSlice, func(i, j int) bool {
+								return selectedSlice[i] > selectedSlice[j]
+							})
+
+							lo.ForEach(selectedSlice, func(i int, _ int) {
+								ufw.DeleteRuleByNumber(i + 1)
+							})
+							return output
+						}
+					}, func(s string) tea.Msg {
+						return rulesDeletedMsg{Output: s}
+					},
+					)
+
 				case confirmation.ConfirmationDialogNo:
 					m.deleteDialog = nil
 				case confirmation.ConfirmationDialogEsc:
@@ -244,43 +274,57 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			switch key {
-			case "up", "k":
-				m.rules.Prev()
-			case "down", "j":
-				m.rules.Next()
-			case "d":
-				if m.rules.NoneSelected() {
-					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this rule?")
-				} else {
-					m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete selected rules?")
-				}
+			switch msg := msg.(type) {
+			case rulesDeletedMsg:
+				m.rules.FocusFirst()
+				m = m.reloadRules()
+				return m, teacmd.OsCmdExecutionFinishedCmd(msg.Output)
 
-			case "esc":
-				m.view = viewStateHome
-				m = m.reloadStatus()
-			case " ":
-				m.rules.Toggle()
+			case tea.KeyMsg:
+				key := msg.String()
+				switch key {
+				case "up", "k":
+					m.rules.Prev()
+				case "down", "j":
+					m.rules.Next()
+				case "d":
+					if m.rules.NoneSelected() {
+						m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete this rule?")
+					} else {
+						m.deleteDialog = confirmation.NewConfirmDialog("Are you sure you want to delete selected rules?")
+					}
+
+				case "esc":
+					m.view = viewStateHome
+					m = m.reloadStatus()
+				case " ":
+					m.rules.Toggle()
+				}
 			}
 		case m.view.isProfiles():
-			newModule, cmd, outMsg := m.profilesModule.UpdateProfilesModule(msg)
-			m.profilesModule = newModule
-			switch outMsg {
-			case profiles.ProfilesOutMsgEsc:
+			switch msg.(type) {
+			case profiles.ProfilesEscMsg:
 				m.view = viewStateHome
 				m = m.reloadStatus()
 				m = m.reloadRules()
+				return m, nil
 			}
+			newModule, cmd := m.profilesModule.UpdateProfilesModule(msg)
+			m.profilesModule = newModule
 			return m, cmd
 
 		case m.view.isSetDefault():
-			newModule, cmd, outMsg := m.setDefaultsModule.UpdateDefaultsModule(msg)
-			m.setDefaultsModule = newModule
-			switch outMsg {
-			case defaultpolicies.DefaultRuleEsc:
+			switch msg := msg.(type) {
+			case defaultpolicies.DefaultPolicyEscMsg:
 				m.view = viewStateHome
+				return m, nil
+			case defaultpolicies.DefaultPoliciesUpdatedMsg:
 				m = m.reloadStatus()
+				return m, teacmd.OsCmdExecutionFinishedCmd(msg.Output)
 			}
+
+			newModule, cmd := m.setDefaultsModule.UpdateDefaultsModule(msg)
+			m.setDefaultsModule = newModule
 			return m, cmd
 		}
 	}
@@ -289,8 +333,9 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) setNotification(msg string) (model, tea.Cmd) {
 	m.notification = msg
+	m.runningNotifications++
 	return m, tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
-		return lastActionTimeUp
+		return lastActionTimeUpMsg{}
 	})
 }
 
@@ -365,6 +410,10 @@ func getStatus() (enabled bool, loggingOn bool) {
 // VIEW
 
 func (m model) View() string {
+	if m.cmdIsRunning {
+		return "Running command, please wait..."
+	}
+
 	var output string
 
 	switch true {
@@ -396,7 +445,7 @@ func (m model) View() string {
 		output = m.setDefaultsModule.ViewSetDefaults()
 	}
 
-	output += "\n" + m.notification
+	output += "\n\n" + m.notification
 	return output
 }
 

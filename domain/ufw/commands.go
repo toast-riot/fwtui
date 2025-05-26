@@ -2,7 +2,7 @@ package ufw
 
 import (
 	"fmt"
-	oscmd "fwtui/utils/cmd"
+	"fwtui/utils/oscmd"
 )
 
 func StatusVerbose() string {

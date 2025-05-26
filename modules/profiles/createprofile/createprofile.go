@@ -44,12 +44,10 @@ func NewProfileForm() ProfileForm {
 
 // UPDATE
 
-type CreateProfileOutMsg = string
+type CreateProfileCreatedMsg struct{}
+type CreateProfileEscMsg struct{}
 
-const CreateProfileCreated CreateProfileOutMsg = "create_profile_created"
-const CreateProfileEsc CreateProfileOutMsg = "create_profile_esc"
-
-func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, CreateProfileOutMsg) {
+func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
@@ -70,17 +68,21 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 		case "enter":
 			res := f.BuildUfwProfile()
 			if res.IsErr() {
-				return f, notification.CreateCmd(res.Err().Error()), ""
+				return f, notification.CreateCmd(res.Err().Error())
 			}
 
 			createProfileRes := entity.CreateProfile(res.Value())
 			if createProfileRes.IsErr() {
-				return f, notification.CreateCmd(createProfileRes.Err().Error()), ""
+				return f, notification.CreateCmd(createProfileRes.Err().Error())
 			}
-			return f, notification.CreateCmd(createProfileRes.Value()), CreateProfileCreated
+			return f, tea.Batch(notification.CreateCmd(createProfileRes.Value()), func() tea.Msg {
+				return CreateProfileCreatedMsg{}
+			})
 
 		case "esc":
-			return f, nil, CreateProfileEsc
+			return f, func() tea.Msg {
+				return CreateProfileEscMsg{}
+			}
 		default:
 			switch f.selectedField.Focused() {
 			case ProfileFormName:
@@ -93,7 +95,7 @@ func (f ProfileForm) UpdateProfileForm(msg tea.Msg) (ProfileForm, tea.Cmd, Creat
 			}
 		}
 	}
-	return f, nil, ""
+	return f, nil
 }
 
 // VIEW

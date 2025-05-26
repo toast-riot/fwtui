@@ -3,8 +3,8 @@ package createrule
 import (
 	"fmt"
 	"fwtui/domain/notification"
-	oscmd "fwtui/utils/cmd"
 	"fwtui/utils/focusablelist"
+	"fwtui/utils/oscmd"
 	"fwtui/utils/result"
 	stringsext "fwtui/utils/strings"
 	"net"
@@ -56,12 +56,10 @@ func NewRuleForm() RuleForm {
 
 // UPDATE
 
-type CreateRuleOutMsg = string
+type CreateRuleEscMsg struct{}
+type CreateRuleCreatedMsg struct{}
 
-const CreateRuleCreated CreateRuleOutMsg = "create_rule_created"
-const CreateRuleEsc = "create_rule_esc"
-
-func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutMsg) {
+func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd) {
 	form := f
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -83,7 +81,7 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			case RuleInterface:
 				form.interface_.Prev()
 			}
-			return form, nil, ""
+			return form, nil
 		case "right":
 			switch form.selectedField.Focused() {
 			case RuleFormProtocol:
@@ -96,7 +94,7 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			case RuleInterface:
 				form.interface_.Next()
 			}
-			return form, nil, ""
+			return form, nil
 
 		case "backspace":
 			switch form.selectedField.Focused() {
@@ -112,12 +110,16 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 		case "enter":
 			res := f.BuildUfwCommand()
 			if res.IsErr() {
-				return f, notification.CreateCmd(res.Err().Error()), ""
+				return f, notification.CreateCmd(res.Err().Error())
 			}
 			output := oscmd.RunCommand(res.Value())
-			return f, notification.CreateCmd(output), CreateRuleCreated
+			return f, tea.Batch(notification.CreateCmd(output), func() tea.Msg {
+				return CreateRuleCreatedMsg{}
+			})
 		case "esc":
-			return form, nil, CreateRuleEsc
+			return form, func() tea.Msg {
+				return CreateRuleEscMsg{}
+			}
 		default:
 			switch form.selectedField.Focused() {
 			case RuleFormPort:
@@ -131,7 +133,7 @@ func (f RuleForm) UpdateRuleForm(msg tea.Msg) (RuleForm, tea.Cmd, CreateRuleOutM
 			}
 		}
 	}
-	return form, nil, ""
+	return form, nil
 }
 
 func fieldsForDirection(dir Direction) []Field {

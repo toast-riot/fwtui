@@ -3,12 +3,12 @@ package profiles
 import (
 	"fmt"
 	"fwtui/domain/entity"
-	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
 	"fwtui/modules/profiles/createprofile"
 	"fwtui/modules/shared/confirmation"
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
+	"fwtui/utils/teacmd"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -43,11 +43,20 @@ func Init() (ProfilesModule, tea.Cmd) {
 
 // UPDATE
 
-type ProfilesOutMsg string
+type profilesDeletedMsg struct {
+	Output string
+}
 
-const ProfilesOutMsgEsc ProfilesOutMsg = "ProfilesRuleEsc"
+type profilesAppliedMsg struct {
+	Output string
+}
+type profilesCreatedMsg struct {
+	Output string
+}
 
-func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea.Cmd, ProfilesOutMsg) {
+type ProfilesEscMsg struct{}
+
+func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea.Cmd) {
 	m := mod
 
 	switch true {
@@ -61,7 +70,9 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			case "down", "j":
 				m.menu.Next()
 			case "esc":
-				return m, nil, ProfilesOutMsgEsc
+				return m, func() tea.Msg {
+					return ProfilesEscMsg{}
+				}
 			case "enter":
 				switch m.menu.Focused() {
 				case menuListProfiles:
@@ -85,26 +96,42 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			switch outMsg {
 			case confirmation.ConfirmationDialogYes:
 				m.deleteDialog = nil
-				if m.installedProfiles.NoneSelected() {
-					entity.DeleteProfile(m.installedProfiles.FocusedItem())
-				} else {
-					lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
-						entity.DeleteProfile(profile)
-					})
-				}
-				m = m.reloadInstalledProfiles()
-				m = m.reloadProfilesToInstall()
-				m.installedProfiles.ClearSelection()
+				return m, teacmd.RunOsCmdAndAfter(func() string {
+					if m.installedProfiles.NoneSelected() {
+						return entity.DeleteProfile(m.installedProfiles.FocusedItem())
+					} else {
+						var output string
+						lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
+							output += "\n" + entity.DeleteProfile(profile)
+						})
+						return output
+					}
+
+				}, func(output string) tea.Msg {
+					return profilesDeletedMsg{Output: output}
+				},
+				)
+
 			case confirmation.ConfirmationDialogNo:
 				m.deleteDialog = nil
 			case confirmation.ConfirmationDialogEsc:
 				m.deleteDialog = nil
 			}
 
-			return m, nil, ""
+			return m, nil
 		}
 
 		switch msg := msg.(type) {
+		case profilesAppliedMsg:
+			m.installedProfiles.ClearSelection()
+			m.installedProfiles.FocusFirst()
+			return m, teacmd.OsCmdExecutionFinishedCmd(msg.Output)
+
+		case profilesDeletedMsg:
+			m = m.reloadInstalledProfiles()
+			m = m.reloadProfilesToInstall()
+			m.installedProfiles.ClearSelection()
+			return m, teacmd.OsCmdExecutionFinishedCmd(msg.Output)
 		case tea.KeyMsg:
 			key := msg.String()
 			switch key {
@@ -124,21 +151,31 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			case " ":
 				m.installedProfiles.Toggle()
 			case "enter":
-				var output string
-				if m.installedProfiles.NoneSelected() {
-					profile := m.installedProfiles.FocusedItem()
-					output = ufw.AllowProfile(profile.Name)
-				} else {
-					lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
-						output += ufw.AllowProfile(profile.Name)
+				return m, teacmd.RunOsCmdAndAfter(func() string {
+					if m.installedProfiles.NoneSelected() {
+						profile := m.installedProfiles.FocusedItem()
+						return ufw.AllowProfile(profile.Name)
+					} else {
+						var output string
+						lo.ForEach(m.installedProfiles.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
+							output += "\n" + ufw.AllowProfile(profile.Name)
 
-					})
-				}
-				return m, notification.CreateCmd(output), ""
+						})
+						return output
+					}
+				}, func(s string) tea.Msg {
+					return profilesAppliedMsg{Output: s}
+				},
+				)
 			}
 		}
 	case m.view.isViewCreateFromList():
 		switch msg := msg.(type) {
+		case profilesCreatedMsg:
+			m = m.reloadInstalledProfiles()
+			m = m.reloadProfilesToInstall()
+			return m, teacmd.OsCmdExecutionFinishedCmd(msg.Output)
+
 		case tea.KeyMsg:
 			key := msg.String()
 			switch key {
@@ -151,40 +188,48 @@ func (mod ProfilesModule) UpdateProfilesModule(msg tea.Msg) (ProfilesModule, tea
 			case " ":
 				m.profilesToInstall.Toggle()
 			case "enter":
-				var output string
+				return m, teacmd.RunOsCmdAndAfter(func() string {
+					if m.profilesToInstall.NoneSelected() {
+						res := entity.CreateProfile(m.profilesToInstall.FocusedItem())
+						if res.IsErr() {
+							return res.Err().Error()
+						}
+						return res.Value()
 
-				if m.profilesToInstall.NoneSelected() {
-					res := entity.CreateProfile(m.profilesToInstall.FocusedItem())
-					if res.IsErr() {
-						return m, notification.CreateCmd(res.Err().Error()), ""
+					} else {
+						var output string
+						lo.ForEach(m.profilesToInstall.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
+							res := entity.CreateProfile(profile)
+							if res.IsErr() {
+								output += "\n" + res.Err().Error()
+							}
+							output += "\n" + res.Value()
+						})
+						return output
 					}
-					output = res.Value()
-
-				} else {
-					lo.ForEach(m.profilesToInstall.GetSelectedItems(), func(profile entity.UFWProfile, _ int) {
-						res := entity.CreateProfile(profile)
-						output += res.Value()
-					})
-				}
-				m = m.reloadInstalledProfiles()
-				m = m.reloadProfilesToInstall()
-				return m, notification.CreateCmd(output), ""
+				}, func(s string) tea.Msg {
+					return profilesCreatedMsg{Output: s}
+				},
+				)
 			}
 		}
 	case m.view.isViewCreate():
-		newForm, cmd, outMsg := m.createProfileModule.UpdateProfileForm(msg)
-		m.createProfileModule = newForm
-		switch outMsg {
-		case createprofile.CreateProfileCreated:
+		switch msg.(type) {
+		case createprofile.CreateProfileCreatedMsg:
 			m = m.reloadInstalledProfiles()
 			m.view = viewStateHome
-		case createprofile.CreateProfileEsc:
+			return m, nil
+		case createprofile.CreateProfileEscMsg:
 			m.view = viewStateHome
+			return m, nil
 		}
-		return m, cmd, ""
+
+		newForm, cmd := m.createProfileModule.UpdateProfileForm(msg)
+		m.createProfileModule = newForm
+		return m, cmd
 	}
 
-	return m, nil, ""
+	return m, nil
 }
 
 func (m ProfilesModule) reloadInstalledProfiles() ProfilesModule {

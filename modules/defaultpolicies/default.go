@@ -2,9 +2,9 @@ package defaultpolicies
 
 import (
 	"fmt"
-	"fwtui/domain/notification"
 	"fwtui/domain/ufw"
 	"fwtui/utils/focusablelist"
+	"fwtui/utils/teacmd"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,11 +48,12 @@ func Init(policies DefaultPolicies) DefaultModule {
 	}
 }
 
-type DefaultRuleOutMsg = string
+// UPDATE
 
-const DefaultRuleEsc = "default_rule_esc"
+type DefaultPoliciesUpdatedMsg struct{ Output string }
+type DefaultPolicyEscMsg struct{}
 
-func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, tea.Cmd, DefaultRuleOutMsg) {
+func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, tea.Cmd) {
 	mod := module
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -82,18 +83,23 @@ func (module DefaultModule) UpdateDefaultsModule(msg tea.Msg) (DefaultModule, te
 			}
 
 		case "enter":
-			output1 := ufw.SetDefaultPolicy("incoming", string(mod.actionIncoming.Focused()))
-			output2 := ufw.SetDefaultPolicy("outgoing", string(mod.actionOutgoing.Focused()))
-			output3 := ufw.SetDefaultPolicy("routed", string(mod.actionRouted.Focused()))
-			return mod, notification.CreateCmd(
-				strings.Join([]string{output1, output2, output3}, "\n"),
-			), ""
+			return mod, teacmd.RunOsCmdAndAfter(func() string {
+				return strings.Join([]string{
+					ufw.SetDefaultPolicy("incoming", string(mod.actionIncoming.Focused())),
+					ufw.SetDefaultPolicy("outgoing", string(mod.actionOutgoing.Focused())),
+					ufw.SetDefaultPolicy("routed", string(mod.actionRouted.Focused())),
+				}, "\n")
+			}, func(s string) tea.Msg {
+				return DefaultPoliciesUpdatedMsg{Output: s}
+			})
 
 		case "esc":
-			return mod, nil, DefaultRuleEsc
+			return mod, func() tea.Msg {
+				return DefaultPolicyEscMsg{}
+			}
 		}
 	}
-	return mod, nil, ""
+	return mod, nil
 }
 
 func (module DefaultModule) ViewSetDefaults() string {
