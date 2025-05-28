@@ -5,6 +5,7 @@ import (
 	"fwtui/domain/ufw"
 	"fwtui/utils/result"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/samber/lo"
@@ -36,12 +37,32 @@ func CreateProfile(p UFWProfile) result.Result[string] {
 }
 
 func DeleteProfile(p UFWProfile) string {
-	err := os.Remove(profilesPath + p.Name + ".profile")
+	files, err := os.ReadDir(profilesPath)
 	if err != nil {
-		return fmt.Sprintf("Error deleting profile: %s", err)
+		return fmt.Sprintf("Error reading profiles directory: %s", err)
 	}
-	ufw.LoadProfile(p.Name)
-	return fmt.Sprintf("Profile %s deleted", p.Name)
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		path := filepath.Join(profilesPath, file.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue // optionally log or handle read error
+		}
+
+		if strings.Contains(string(content), "["+p.Name+"]") {
+			err := os.Remove(path)
+			if err != nil {
+				return fmt.Sprintf("Error deleting profile: %s", err)
+			}
+			return fmt.Sprintf("Profile with title '%s' deleted", p.Name)
+		}
+	}
+
+	return fmt.Sprintf("Profile with title '%s' not found", p.Title)
 }
 
 func LoadInstalledProfiles() ([]UFWProfile, error) {
