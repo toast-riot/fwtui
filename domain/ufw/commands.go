@@ -36,7 +36,7 @@ func DeleteRuleByNumber(num int) string {
 }
 
 func LoadProfile(name string) string {
-	return oscmd.RunCommand(fmt.Sprintf("sudo ufw app update %s", name))
+	return oscmd.RunCommand(fmt.Sprintf("sudo ufw app update \"%s\"", name))
 }
 
 func GetProfileInfo(name string) string {
@@ -48,7 +48,7 @@ func GetProfileList() string {
 }
 
 func AllowProfile(name string) string {
-	return oscmd.RunCommand(fmt.Sprintf("sudo ufw allow %s", name))
+	return oscmd.RunCommand(fmt.Sprintf("sudo ufw allow \"%s\"", name))
 }
 
 func SetDefaultPolicy(direction, action string) string {
