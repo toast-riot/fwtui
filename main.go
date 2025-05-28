@@ -11,7 +11,9 @@ import (
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
 	"fwtui/utils/teacmd"
+	"log"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -25,13 +27,18 @@ func main() {
 		fmt.Println("This action requires root. Please run with sudo.")
 		os.Exit(1)
 	}
+	cmd := exec.Command("sudo", "ufw", "status")
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("ufw is not available or sudo failed: %v", err)
+	}
 
 	profilesModule, _ := profiles.Init()
 	m := model{menuList: focusablelist.FromList(buildMenu()), view: viewStateHome, profilesModule: profilesModule}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
-	_, err := p.Run()
+	_, err = p.Run()
 	if err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
