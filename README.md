@@ -16,6 +16,7 @@
     - Interfaces, source/destination IPs
     - Comments for better organization
   - Delete rules easily using keyboard shortcuts
+  - Export rules into single executable script for backup or sharing
 
 - **🛡️ Default Policies**
   - View and change default policies for incoming and outgoing traffic
