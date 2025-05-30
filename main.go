@@ -154,9 +154,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.setNotification(msg.Output)
 
 	case notification.NotificationReceivedMsg:
-		var lastAction []string
-		lastAction = append(lastAction, msg.Text)
-		return m.setNotification(strings.Join(lastAction, "\n"))
+		return m.setNotification(msg.Text)
 
 	default:
 		switch true {
@@ -221,7 +219,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if err != nil {
 								return notification.NotificationReceivedMsg{Text: fmt.Sprintf("Error exporting rules: %s", err)}
 							}
-							return notification.NotificationReceivedMsg{Text: "Rules exported to ufw_import.sh"}
+							return notification.NotificationReceivedMsg{Text: "Rules exported to ufw_import.sh.\nCareful!!! This file is executable and will reset your current UFW state when run.\nPlease review it before executing."}
 
 						}
 					case menuSetDefault:
