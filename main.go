@@ -87,6 +87,7 @@ const menuDisableUFW = "DISABLE"
 const menuEnableUFW = "ENABLE"
 const menuCreateRule = "CREATE_RULE"
 const menuDeleteRule = "DELETE_RULE"
+const menuExportRules = "EXPORT_RULES"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
 const menuSetDefault = "SET_DEFAULT"
@@ -210,6 +211,19 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.view = viewStateCreateRule
 					case menuDeleteRule:
 						m.view = viewStateDeleteRule
+					case menuExportRules:
+						return m, func() tea.Msg {
+							getwd, err := os.Getwd()
+							if err != nil {
+								return nil
+							}
+							err = ufw.ExportCurrentUFWState(getwd + "/ufw_import.sh")
+							if err != nil {
+								return notification.NotificationReceivedMsg{Text: fmt.Sprintf("Error exporting rules: %s", err)}
+							}
+							return notification.NotificationReceivedMsg{Text: "Rules exported to ufw_import.sh"}
+
+						}
 					case menuSetDefault:
 						m.view = viewSetDefault
 						result := defaultpolicies.ParseUfwDefaults(m.status)
@@ -359,6 +373,11 @@ func (m model) reloadStatus() model {
 
 func (m model) reloadRules() model {
 	lines := strings.Split(ufw.StatusNumbered(), "\n")
+	if len(lines) < 6 {
+		m.rules.SetItems([]rule{})
+		return m
+	}
+
 	lines = lines[4:(len(lines) - 2)]
 	rules := lo.Map(lines, func(line string, index int) rule {
 		return rule{
@@ -382,6 +401,7 @@ func buildMenu() []menuItem {
 			menuItem{"Profiles", menuProfiles},
 			menuItem{"Create rule", menuCreateRule},
 			menuItem{"Delete rule", menuDeleteRule},
+			menuItem{"Export rules", menuExportRules},
 		)
 		if loggingOn {
 			items = append(items, menuItem{"Disable logging", menuDisableLogging})
