@@ -33,6 +33,17 @@ func main() {
 		log.Fatalf("ufw is not available or sudo failed: %v", err)
 	}
 
+	backupDir := "/etc/ufw/backup"
+	err = os.MkdirAll(backupDir, 0755)
+	if err != nil {
+		fmt.Println("Failed to create backup directory", err)
+	}
+
+	err = ufw.ExportCurrentUFWState(fmt.Sprintf("%s/%s.sh", backupDir, time.Now().Format("2006-01-02_15-04-05")))
+	if err != nil {
+		fmt.Println("Failed to backup the firewall settings", err)
+	}
+
 	profilesModule, _ := profiles.Init()
 	m := model{
 		menuList:       focusablelist.FromList(buildMenu()),
@@ -392,7 +403,7 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmd.Stdout = os.Stdout
 					cmd.Stderr = os.Stderr
 					cmd.Stdin = os.Stdin
-					cmd.Run()
+					_ = cmd.Run()
 				}
 			}
 		}

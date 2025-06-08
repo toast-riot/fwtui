@@ -16,7 +16,7 @@
     - Interfaces, source/destination IPs
     - Comments for better organization
   - Delete rules easily using keyboard shortcuts
-  - Export rules into single executable script for backup or sharing
+  - Export rules into a single executable script for backup or sharing
 
 - **🛡️ Default Policies**
   - View and change default policies for incoming and outgoing traffic
@@ -26,7 +26,16 @@
   - Install predefined profiles in one click
   - List all available profiles for quick management
 
-- **⌨️ Full keyboard navigation**
+- **🔍 Advanced Views**
+  - Show full raw UFW rules
+  - View added rules only
+  - Inspect built-in rules
+  - View currently listening ports and services
+
+- **💾 Automatic Backup**
+  - UFW rules are automatically backed up at every app startup
+
+- **⌨️ Full Keyboard Navigation**
   - No mouse needed — ideal for terminal lovers and remote server admins
 
 
