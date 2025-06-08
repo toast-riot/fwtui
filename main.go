@@ -34,7 +34,12 @@ func main() {
 	}
 
 	profilesModule, _ := profiles.Init()
-	m := model{menuList: focusablelist.FromList(buildMenu()), view: viewStateHome, profilesModule: profilesModule}
+	m := model{
+		menuList:       focusablelist.FromList(buildMenu()),
+		showOptions:    focusablelist.FromList([]string{showRaw, showAdded, showListening, showBuiltins}),
+		view:           viewStateHome,
+		profilesModule: profilesModule,
+	}
 	m = m.reloadRules()
 	m = m.reloadStatus()
 	p := tea.NewProgram(m)
@@ -74,11 +79,16 @@ func (v viewHomeState) isSetDefault() bool {
 	return v == viewSetDefault
 }
 
-const viewStateHome = "viewStateHome"
+func (v viewHomeState) isShow() bool {
+	return v == viewShow
+}
+
+const viewStateHome = "view_state_home"
 const viewStateProfiles = "profiles"
 const viewStateCreateRule = "create_rule"
 const viewStateDeleteRule = "delete_rule"
 const viewSetDefault = "set_default"
+const viewShow = "show_menu"
 
 // HOME MENU
 const menuResetUFW = "RESET_UFW"
@@ -92,6 +102,13 @@ const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
 const menuSetDefault = "SET_DEFAULT"
 const menuProfiles = "PROFILES"
+const menuShow = "SHOW"
+
+// show menu
+const showRaw = "Raw"
+const showAdded = "Added"
+const showListening = "Listening"
+const showBuiltins = "Builtins"
 
 type rule struct {
 	number int
@@ -100,6 +117,7 @@ type rule struct {
 
 type model struct {
 	menuList             *focusablelist.SelectableList[menuItem]
+	showOptions          *focusablelist.SelectableList[string]
 	resetDialog          *confirmation.ConfirmDialog
 	view                 viewHomeState
 	status               string
@@ -234,6 +252,8 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case menuProfiles:
 						m.view = viewStateProfiles
+					case menuShow:
+						m.view = viewShow
 					case menuQuit:
 						return m, tea.Quit
 					}
@@ -345,6 +365,36 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newModule, cmd := m.setDefaultsModule.UpdateDefaultsModule(msg)
 			m.setDefaultsModule = newModule
 			return m, cmd
+		case m.view.isShow():
+			switch msg := msg.(type) {
+			case tea.KeyMsg:
+				key := msg.String()
+				switch key {
+				case "esc":
+					m.view = viewStateHome
+				case "up", "k":
+					m.showOptions.Prev()
+				case "down", "j":
+					m.showOptions.Next()
+				case "enter":
+					var toShow string
+					switch m.showOptions.Focused() {
+					case showRaw:
+						toShow = "raw"
+					case showAdded:
+						toShow = "added"
+					case showListening:
+						toShow = "listening"
+					case showBuiltins:
+						toShow = "builtins"
+					}
+					cmd := exec.Command("bash", "-c", "sudo ufw show "+toShow+" | less")
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+					cmd.Stdin = os.Stdin
+					cmd.Run()
+				}
+			}
 		}
 	}
 	return m, nil
@@ -400,6 +450,7 @@ func buildMenu() []menuItem {
 			menuItem{"Create rule", menuCreateRule},
 			menuItem{"Delete rule", menuDeleteRule},
 			menuItem{"Export rules", menuExportRules},
+			menuItem{"Show", menuShow},
 		)
 		if loggingOn {
 			items = append(items, menuItem{"Disable logging", menuDisableLogging})
@@ -468,6 +519,14 @@ func (m model) View() string {
 		output = m.profilesModule.ViewProfiles()
 	case m.view.isSetDefault():
 		output = m.setDefaultsModule.ViewSetDefaults()
+	case m.view.isShow():
+		lines := []string{"Select show type:"}
+		m.showOptions.ForEach(func(item string, index int, isFocused bool) {
+			focusedPrefix := lo.Ternary(isFocused, ">", " ")
+			lines = append(lines, fmt.Sprintf("%s %s", focusedPrefix, item))
+		})
+		output = strings.Join(lines, "\n")
+		output += "\n\n↑↓ to navigate, Enter to confirm, q to exit selection, Esc to cancel"
 	}
 
 	output += "\n\n" + m.notification
