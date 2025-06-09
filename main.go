@@ -11,11 +11,14 @@ import (
 	"fwtui/utils/focusablelist"
 	"fwtui/utils/multiselect"
 	"fwtui/utils/teacmd"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,16 +36,7 @@ func main() {
 		log.Fatalf("ufw is not available or sudo failed: %v", err)
 	}
 
-	backupDir := "/etc/ufw/backup"
-	err = os.MkdirAll(backupDir, 0755)
-	if err != nil {
-		fmt.Println("Failed to create backup directory", err)
-	}
-
-	err = ufw.ExportCurrentUFWState(fmt.Sprintf("%s/%s.sh", backupDir, time.Now().Format("2006-01-02_15-04-05")))
-	if err != nil {
-		fmt.Println("Failed to backup the firewall settings", err)
-	}
+	backup()
 
 	profilesModule, _ := profiles.Init()
 	m := model{
@@ -108,7 +102,6 @@ const menuDisableUFW = "DISABLE"
 const menuEnableUFW = "ENABLE"
 const menuCreateRule = "CREATE_RULE"
 const menuDeleteRule = "DELETE_RULE"
-const menuExportRules = "EXPORT_RULES"
 const menuDisableLogging = "DISABLE_LOGGING"
 const menuEnableLogging = "ENABLE_LOGGING"
 const menuSetDefault = "SET_DEFAULT"
@@ -238,19 +231,6 @@ func (mod model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.view = viewStateCreateRule
 					case menuDeleteRule:
 						m.view = viewStateDeleteRule
-					case menuExportRules:
-						return m, func() tea.Msg {
-							getwd, err := os.Getwd()
-							if err != nil {
-								return nil
-							}
-							err = ufw.ExportCurrentUFWState(getwd + "/ufw_import.sh")
-							if err != nil {
-								return notification.NotificationReceivedMsg{Text: fmt.Sprintf("Error exporting rules: %s", err)}
-							}
-							return notification.NotificationReceivedMsg{Text: "Rules exported to ufw_import.sh.\nCareful!!! This file is executable and will reset your current UFW state when run.\nPlease review it before executing."}
-
-						}
 					case menuSetDefault:
 						m.view = viewSetDefault
 						result := defaultpolicies.ParseUfwDefaults(m.status)
@@ -460,7 +440,6 @@ func buildMenu() []menuItem {
 			menuItem{"Profiles", menuProfiles},
 			menuItem{"Create rule", menuCreateRule},
 			menuItem{"Delete rule", menuDeleteRule},
-			menuItem{"Export rules", menuExportRules},
 			menuItem{"Show", menuShow},
 		)
 		if loggingOn {
@@ -568,4 +547,63 @@ func renderTwoColumns(left []string, right []string) string {
 		fmt.Fprintf(&b, "%-30s | %s\n", l, r)
 	}
 	return b.String()
+}
+
+func backup() {
+	backupDir := "/etc/ufw/backup"
+	err := os.MkdirAll(backupDir, 0755)
+	if err != nil {
+		fmt.Println("Failed to create backup directory", err)
+	}
+
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		log.Fatalf("Failed to read directory: %v", err)
+	}
+
+	var latestFile string
+	var latestTime int64
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(backupDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			log.Printf("Skipping %s: %v", path, err)
+			continue
+		}
+		ctime := getCreationTime(info)
+		if ctime > latestTime {
+			latestTime = ctime
+			latestFile = path
+		}
+	}
+
+	currentUFWStatus, err := ufw.GetStateFromFiles()
+	if err != nil {
+		fmt.Println("Failed to export the state for backup", err)
+	}
+
+	if latestFile != "" {
+		data, err := os.ReadFile(latestFile)
+		if err != nil {
+			log.Fatalf("Failed to read file: %v", err)
+		}
+
+		if string(data) == currentUFWStatus {
+			return
+		}
+	}
+
+	err = os.WriteFile(fmt.Sprintf("%s/%s.sh", backupDir, time.Now().Format("2006-01-02_15-04-05")), []byte(currentUFWStatus), 0755)
+	if err != nil {
+		fmt.Println("Failed to backup the firewall settings", err)
+	}
+}
+
+func getCreationTime(info fs.FileInfo) int64 {
+	stat := info.Sys().(*syscall.Stat_t)
+	return stat.Ctim.Sec
 }

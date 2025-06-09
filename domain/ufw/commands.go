@@ -56,15 +56,15 @@ func SetDefaultPolicy(direction, action string) string {
 	return oscmd.RunCommand(fmt.Sprintf("sudo ufw default %s %s", action, direction))
 }
 
-func ExportCurrentUFWState(scriptPath string) error {
+func GetStateFromFiles() (string, error) {
 	rulesV4, err := os.ReadFile("/etc/ufw/user.rules")
 	if err != nil {
-		return fmt.Errorf("reading user.rules: %w", err)
+		return "", fmt.Errorf("reading user.rules: %w", err)
 	}
 
 	rulesV6, err := os.ReadFile("/etc/ufw/user6.rules")
 	if err != nil {
-		return fmt.Errorf("reading user6.rules: %w", err)
+		return "", fmt.Errorf("reading user6.rules: %w", err)
 	}
 
 	script := `#!/bin/bash
@@ -83,11 +83,5 @@ EOF
 ufw --force reload
 echo "UFW rules restored."
 `
-
-	err = os.WriteFile(scriptPath, []byte(script), 0755)
-	if err != nil {
-		return fmt.Errorf("writing export script: %w", err)
-	}
-
-	return nil
+	return script, nil
 }
