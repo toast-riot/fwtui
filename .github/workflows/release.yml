@@ -35,5 +35,6 @@ jobs:
         with:
           generate_release_notes: true
           files: bin/fwtui-${{ matrix.arch }}
+          tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
